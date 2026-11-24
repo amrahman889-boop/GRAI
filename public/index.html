@@ -1,645 +1,85 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GRAI</title>
-  <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #f4f6f9;
-      color: #111827;
-      height: 100dvh;
-      overflow: hidden;
-    }
-    .app {
-      position: relative;
-      width: 100%;
-      height: 100dvh;
-      max-width: 900px;
-      margin: 0 auto;
-      background: #ffffff;
-      display: flex;
-      flex-direction: column;
-      box-shadow: 0 0 25px rgba(0, 0, 0, 0.05);
-    }
+const { GoogleGenAI } = require("@google/genai");
 
-    /* Top Header */
-    .topbar {
-      height: 56px;
-      padding: 0 14px;
-      border-bottom: 1px solid #e5e7eb;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: #ffffff;
-      z-index: 5;
-    }
-    .left-group {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .menu-btn {
-      width: 38px;
-      height: 38px;
-      border: none;
-      background: transparent;
-      border-radius: 10px;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      gap: 5px;
-      padding: 0;
-    }
-    .menu-btn:hover {
-      background: #f3f4f6;
-    }
-    .menu-btn span {
-      display: block;
-      width: 18px;
-      height: 2px;
-      background: #111827;
-      border-radius: 2px;
-    }
-    .brand-title {
-      font-size: 17px;
-      font-weight: 700;
-      margin: 0;
-      color: #111827;
-    }
-    .new-chat-top-btn {
-      border: 1px solid #d1d5db;
-      background: #ffffff;
-      color: #111827;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 7px 12px;
-      border-radius: 999px;
-      cursor: pointer;
-    }
-    .new-chat-top-btn:hover {
-      background: #f9fafb;
-    }
+const SYSTEM_PROMPT = `
+You are GRAI, a helpful, natural AI assistant.
+- Your default language is English.
+- Respond naturally in whichever language the user uses (English, Bengali, Banglish, Hindi, or any other language) without mentioning language rules unless asked.
+- Keep track of all previous messages and replies in the conversation accurately.
+`.trim();
 
-    /* Slide-out Drawer & Backdrop */
-    .backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(17, 24, 39, 0.35);
-      z-index: 20;
-      display: none;
-    }
-    .backdrop.open {
-      display: block;
-    }
-    .drawer {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 290px;
-      max-width: 82vw;
-      height: 100dvh;
-      background: #ffffff;
-      border-right: 1px solid #e5e7eb;
-      z-index: 30;
-      transform: translateX(-100%);
-      transition: transform 0.22s ease;
-      display: flex;
-      flex-direction: column;
-      padding: 14px;
-      gap: 12px;
-    }
-    .drawer.open {
-      transform: translateX(0);
-    }
-    .drawer-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #f3f4f6;
-    }
-    .drawer-heading {
-      font-size: 15px;
-      font-weight: 700;
-      color: #111827;
-    }
-    .close-drawer-btn {
-      border: none;
-      background: transparent;
-      font-size: 20px;
-      color: #4b5563;
-      cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 8px;
-    }
-    .close-drawer-btn:hover {
-      background: #f3f4f6;
-    }
-    .history-list {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .history-item {
-      padding: 11px 12px;
-      border-radius: 10px;
-      font-size: 14px;
-      color: #1f2937;
-      cursor: pointer;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      user-select: none;
-    }
-    .history-item:hover {
-      background: #f3f4f6;
-    }
-    .history-item.active {
-      background: #e5e7eb;
-      font-weight: 600;
-    }
+const MODELS = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-flash-latest"];
 
-    /* Action Sheet / Hold Menu */
-    .action-sheet-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(17, 24, 39, 0.35);
-      z-index: 40;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .action-sheet-backdrop.open {
-      display: flex;
-    }
-    .action-sheet {
-      width: 100%;
-      max-width: 300px;
-      background: #ffffff;
-      border-radius: 14px;
-      overflow: hidden;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-      border: 1px solid #e5e7eb;
-    }
-    .action-option {
-      width: 100%;
-      padding: 14px 16px;
-      border: none;
-      background: #ffffff;
-      font-size: 15px;
-      font-weight: 500;
-      text-align: left;
-      cursor: pointer;
-      display: block;
-    }
-    .action-option + .action-option {
-      border-top: 1px solid #f3f4f6;
-    }
-    .action-option:hover {
-      background: #f9fafb;
-    }
-    .action-option.rename {
-      color: #111827;
-    }
-    .action-option.delete {
-      color: #dc2626;
-      font-weight: 600;
-    }
-
-    /* Chat Area */
-    .chat-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 18px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-      background: #ffffff;
-    }
-    .msg-row {
-      display: flex;
-      flex-direction: column;
-      max-width: 84%;
-    }
-    .msg-row.user {
-      align-self: flex-end;
-      align-items: flex-end;
-    }
-    .msg-row.assistant {
-      align-self: flex-start;
-      align-items: flex-start;
-    }
-    .msg-label {
-      font-size: 11px;
-      color: #6b7280;
-      margin-bottom: 4px;
-      padding: 0 4px;
-    }
-    .bubble {
-      padding: 11px 15px;
-      border-radius: 16px;
-      font-size: 15px;
-      line-height: 1.55;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .msg-row.user .bubble {
-      background: #111827;
-      color: #ffffff;
-      border-bottom-right-radius: 4px;
-    }
-    .msg-row.assistant .bubble {
-      background: #f3f4f6;
-      color: #111827;
-      border-bottom-left-radius: 4px;
-    }
-
-    /* Composer */
-    .composer {
-      padding: 12px 14px;
-      border-top: 1px solid #e5e7eb;
-      background: #ffffff;
-    }
-    .composer form {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .composer input {
-      flex: 1;
-      padding: 12px 14px;
-      border: 1px solid #d1d5db;
-      border-radius: 22px;
-      font-size: 15px;
-      outline: none;
-      color: #111827;
-    }
-    .composer input:focus {
-      border-color: #111827;
-    }
-    .send-btn {
-      padding: 12px 18px;
-      border: none;
-      border-radius: 22px;
-      background: #111827;
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .send-btn:disabled {
-      opacity: 0.55;
-      cursor: not-allowed;
-    }
-  </style>
-</head>
-<body>
-  <div class="app">
-    <header class="topbar">
-      <div class="left-group">
-        <button id="menu-btn" class="menu-btn" type="button" aria-label="Chat history">
-          <span></span>
-          <span></span>
-        </button>
-        <h1 class="brand-title">GRAI</h1>
-      </div>
-      <button id="new-chat-btn" class="new-chat-top-btn" type="button">New Chat</button>
-    </header>
-
-    <main id="chat-area" class="chat-area"></main>
-
-    <div class="composer">
-      <form id="chat-form">
-        <input
-          id="prompt-input"
-          type="text"
-          placeholder="Message GRAI..."
-          required
-          autocomplete="off"
-        />
-        <button id="send-btn" class="send-btn" type="submit">Send</button>
-      </form>
-    </div>
-  </div>
-
-  <div id="backdrop" class="backdrop"></div>
-  <aside id="drawer" class="drawer" aria-label="Conversation history">
-    <div class="drawer-header">
-      <span class="drawer-heading">Chat History</span>
-      <button id="close-drawer-btn" class="close-drawer-btn" type="button" aria-label="Close">×</button>
-    </div>
-    <div id="history-list" class="history-list"></div>
-  </aside>
-
-  <div id="action-sheet-backdrop" class="action-sheet-backdrop">
-    <div class="action-sheet" role="menu">
-      <button id="rename-option-btn" class="action-option rename" type="button">Rename</button>
-      <button id="delete-option-btn" class="action-option delete" type="button">Delete Chat</button>
-    </div>
-  </div>
-
-  <script>
-    const STORAGE_KEY = "grai_conversations_v2";
-
-    const menuBtn = document.getElementById("menu-btn");
-    const newChatBtn = document.getElementById("new-chat-btn");
-    const backdrop = document.getElementById("backdrop");
-    const drawer = document.getElementById("drawer");
-    const closeDrawerBtn = document.getElementById("close-drawer-btn");
-    const historyListEl = document.getElementById("history-list");
-    const chatAreaEl = document.getElementById("chat-area");
-    const chatFormEl = document.getElementById("chat-form");
-    const promptInputEl = document.getElementById("prompt-input");
-    const sendBtnEl = document.getElementById("send-btn");
-
-    const actionBackdropEl = document.getElementById("action-sheet-backdrop");
-    const renameOptionBtn = document.getElementById("rename-option-btn");
-    const deleteOptionBtn = document.getElementById("delete-option-btn");
-
-    let selectedSessionIdForAction = null;
-    let state = loadState();
-
-    function createNewSession() {
-      return {
-        id: "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-        title: "New Chat",
-        messages: [],
-      };
-    }
-
-    function loadState() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-            const exists = parsed.sessions.some((s) => s.id === parsed.activeId);
-            return {
-              sessions: parsed.sessions,
-              activeId: exists ? parsed.activeId : parsed.sessions[0].id,
-            };
-          }
-        }
-      } catch {}
-      const first = createNewSession();
-      return { sessions: [first], activeId: first.id };
-    }
-
-    function saveState() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch {}
-    }
-
-    function getActiveSession() {
-      return state.sessions.find((s) => s.id === state.activeId) || state.sessions[0];
-    }
-
-    function openDrawer() {
-      drawer.classList.add("open");
-      backdrop.classList.add("open");
-    }
-
-    function closeDrawer() {
-      drawer.classList.remove("open");
-      backdrop.classList.remove("open");
-    }
-
-    function openActionMenu(sessionId) {
-      selectedSessionIdForAction = sessionId;
-      actionBackdropEl.classList.add("open");
-    }
-
-    function closeActionMenu() {
-      selectedSessionIdForAction = null;
-      actionBackdropEl.classList.remove("open");
-    }
-
-    menuBtn.addEventListener("click", openDrawer);
-    closeDrawerBtn.addEventListener("click", closeDrawer);
-    backdrop.addEventListener("click", closeDrawer);
-
-    actionBackdropEl.addEventListener("click", (e) => {
-      if (e.target === actionBackdropEl) {
-        closeActionMenu();
+async function tryModelsOnce(ai, contents) {
+  let lastError;
+  for (const model of MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+        },
+      });
+      if (response?.text?.trim()) {
+        return response.text.trim();
       }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("No response received from any model.");
+}
+
+module.exports = async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: "GEMINI_API_KEY is missing in Vercel Environment Variables." });
+    }
+
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    const { message, history = [] } = body;
+
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    const formattedHistory = Array.isArray(history)
+      ? history
+          .filter(
+            (item) =>
+              item &&
+              (item.role === "user" || item.role === "assistant") &&
+              typeof item.content === "string" &&
+              item.content.trim()
+          )
+          .slice(-24)
+          .map((item) => ({
+            role: item.role === "assistant" ? "model" : "user",
+            parts: [{ text: item.content }],
+          }))
+      : [];
+
+    const contents = [
+      ...formattedHistory,
+      {
+        role: "user",
+        parts: [{ text: message.trim() }],
+      },
+    ];
+
+    const replyText = await tryModelsOnce(ai, contents);
+    return res.status(200).json({ reply: replyText });
+  } catch (err) {
+    console.error("GRAI API error:", err);
+    return res.status(500).json({
+      error: err?.message || "Failed to generate response from server.",
     });
-
-    renameOptionBtn.addEventListener("click", () => {
-      const targetId = selectedSessionIdForAction;
-      closeActionMenu();
-      if (!targetId) return;
-      const target = state.sessions.find((s) => s.id === targetId);
-      if (!target) return;
-      const nextTitle = prompt("Rename chat:", target.title || "New Chat");
-      if (nextTitle && nextTitle.trim()) {
-        target.title = nextTitle.trim().slice(0, 60);
-        saveState();
-        renderHistory();
-      }
-    });
-
-    deleteOptionBtn.addEventListener("click", () => {
-      const targetId = selectedSessionIdForAction;
-      closeActionMenu();
-      if (!targetId) return;
-
-      const remaining = state.sessions.filter((s) => s.id !== targetId);
-      if (remaining.length === 0) {
-        const fresh = createNewSession();
-        state.sessions = [fresh];
-        state.activeId = fresh.id;
-      } else {
-        state.sessions = remaining;
-        if (state.activeId === targetId) {
-          state.activeId = remaining[0].id;
-        }
-      }
-      saveState();
-      renderAll();
-    });
-
-    newChatBtn.addEventListener("click", () => {
-      const fresh = createNewSession();
-      state.sessions.unshift(fresh);
-      state.activeId = fresh.id;
-      saveState();
-      closeDrawer();
-      renderAll();
-      promptInputEl.focus();
-    });
-
-    function renderHistory() {
-      historyListEl.innerHTML = "";
-      for (const session of state.sessions) {
-        const item = document.createElement("div");
-        item.className = "history-item" + (session.id === state.activeId ? " active" : "");
-        item.textContent = session.title || "New Chat";
-
-        let pressTimer = null;
-        let longPressed = false;
-
-        const startPress = () => {
-          longPressed = false;
-          pressTimer = setTimeout(() => {
-            longPressed = true;
-            openActionMenu(session.id);
-          }, 500);
-        };
-
-        const cancelPress = () => {
-          if (pressTimer) {
-            clearTimeout(pressTimer);
-            pressTimer = null;
-          }
-        };
-
-        item.addEventListener("touchstart", startPress, { passive: true });
-        item.addEventListener("touchend", cancelPress);
-        item.addEventListener("touchmove", cancelPress);
-        item.addEventListener("mousedown", startPress);
-        item.addEventListener("mouseup", cancelPress);
-        item.addEventListener("mouseleave", cancelPress);
-
-        item.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          cancelPress();
-          openActionMenu(session.id);
-        });
-
-        item.addEventListener("click", () => {
-          if (longPressed) {
-            longPressed = false;
-            return;
-          }
-          state.activeId = session.id;
-          saveState();
-          closeDrawer();
-          renderAll();
-        });
-
-        historyListEl.appendChild(item);
-      }
-    }
-
-    function buildMessageElement(role, text) {
-      const row = document.createElement("div");
-      row.className = "msg-row " + role;
-
-      const label = document.createElement("div");
-      label.className = "msg-label";
-      label.textContent = role === "user" ? "You" : "GRAI";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = text;
-
-      row.appendChild(label);
-      row.appendChild(bubble);
-      return row;
-    }
-
-    function renderMessages() {
-      const active = getActiveSession();
-      chatAreaEl.innerHTML = "";
-
-      if (!active.messages || active.messages.length === 0) {
-        chatAreaEl.appendChild(
-          buildMessageElement("assistant", "Hello! I am GRAI. How can I help you?")
-        );
-      } else {
-        for (const msg of active.messages) {
-          chatAreaEl.appendChild(buildMessageElement(msg.role, msg.content));
-        }
-      }
-      chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
-    }
-
-    function renderAll() {
-      renderHistory();
-      renderMessages();
-    }
-
-    chatFormEl.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = promptInputEl.value.trim();
-      if (!text) return;
-
-      const active = getActiveSession();
-      const historyBeforeThisTurn = [...active.messages];
-
-      if (active.messages.length === 0 && active.title === "New Chat") {
-        active.title = text.slice(0, 36);
-      }
-
-      active.messages.push({ role: "user", content: text });
-      saveState();
-      renderAll();
-
-      promptInputEl.value = "";
-      sendBtnEl.disabled = true;
-
-      const typingEl = buildMessageElement("assistant", "...");
-      chatAreaEl.appendChild(typingEl);
-      chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
-
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            history: historyBeforeThisTurn,
-          }),
-        });
-
-        const rawText = await res.text();
-        let data = {};
-        try {
-          data = rawText ? JSON.parse(rawText) : {};
-        } catch {
-          data = { error: rawText || "Invalid response from server." };
-        }
-
-        typingEl.remove();
-
-        if (!res.ok) {
-          const errText = "Error: " + (data?.error || "Failed to get response.");
-          active.messages.push({ role: "assistant", content: errText });
-          saveState();
-          renderAll();
-          return;
-        }
-
-        const reply = data.reply || "No response received.";
-        active.messages.push({ role: "assistant", content: reply });
-        saveState();
-        renderAll();
-      } catch (err) {
-        typingEl.remove();
-        active.messages.push({
-          role: "assistant",
-          content: "Error: " + (err?.message || "Network or server error occurred."),
-        });
-        saveState();
-        renderAll();
-      } finally {
-        sendBtnEl.disabled = false;
-        chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
-        promptInputEl.focus();
-      }
-    });
-
-    renderAll();
-  </script>
-</body>
-</html>
+  }
+};
