@@ -5,267 +5,372 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GRAI</title>
   <style>
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      background: #eef2f6;
-      color: #0f172a;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      padding: 16px;
+      background: #f4f6f9;
+      color: #111827;
+      height: 100dvh;
+      overflow: hidden;
     }
     .app {
+      position: relative;
       width: 100%;
-      max-width: 980px;
-      height: 88vh;
-      min-height: 560px;
+      height: 100dvh;
+      max-width: 900px;
+      margin: 0 auto;
       background: #ffffff;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
       display: flex;
-      overflow: hidden;
-      border: 1px solid #e2e8f0;
+      flex-direction: column;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.05);
     }
-    .sidebar {
-      width: 260px;
-      background: #f8fafc;
-      border-right: 1px solid #e2e8f0;
+
+    /* Top Header */
+    .topbar {
+      height: 56px;
+      padding: 0 14px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+      z-index: 5;
+    }
+    .left-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .menu-btn {
+      width: 38px;
+      height: 38px;
+      border: none;
+      background: transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+      padding: 0;
+    }
+    .menu-btn:hover {
+      background: #f3f4f6;
+    }
+    .menu-btn span {
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: #111827;
+      border-radius: 2px;
+    }
+    .brand-title {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 0;
+      color: #111827;
+    }
+    .new-chat-top-btn {
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .new-chat-top-btn:hover {
+      background: #f9fafb;
+    }
+
+    /* Slide-out Drawer & Backdrop */
+    .backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.35);
+      z-index: 20;
+      display: none;
+    }
+    .backdrop.open {
+      display: block;
+    }
+    .drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 290px;
+      max-width: 82vw;
+      height: 100dvh;
+      background: #ffffff;
+      border-right: 1px solid #e5e7eb;
+      z-index: 30;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
       display: flex;
       flex-direction: column;
       padding: 14px;
       gap: 12px;
     }
-    .new-chat-btn {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      background: #ffffff;
-      color: #0f172a;
-      font-size: 14px;
-      font-weight: 600;
+    .drawer.open {
+      transform: translateX(0);
+    }
+    .drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .drawer-heading {
+      font-size: 15px;
+      font-weight: 700;
+      color: #111827;
+    }
+    .close-drawer-btn {
+      border: none;
+      background: transparent;
+      font-size: 20px;
+      color: #4b5563;
       cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
     }
-    .new-chat-btn:hover {
-      background: #f1f5f9;
-    }
-    .history-title {
-      font-size: 12px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      padding: 0 4px;
+    .close-drawer-btn:hover {
+      background: #f3f4f6;
     }
     .history-list {
       flex: 1;
       overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
     .history-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 9px 10px;
-      border-radius: 9px;
+      padding: 11px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #1f2937;
       cursor: pointer;
-      border: 1px solid transparent;
-      background: transparent;
-      text-align: left;
-    }
-    .history-item:hover {
-      background: #eef2f6;
-    }
-    .history-item.active {
-      background: #e2e8f0;
-      border-color: #cbd5e1;
-    }
-    .history-label {
-      flex: 1;
-      font-size: 13px;
-      color: #1e293b;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      user-select: none;
     }
-    .delete-btn {
-      border: none;
-      background: transparent;
-      color: #64748b;
-      font-size: 14px;
-      line-height: 1;
-      padding: 2px 6px;
-      border-radius: 6px;
-      cursor: pointer;
+    .history-item:hover {
+      background: #f3f4f6;
     }
-    .delete-btn:hover {
-      background: #fee2e2;
-      color: #b91c1c;
+    .history-item.active {
+      background: #e5e7eb;
+      font-weight: 600;
     }
-    .main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-    }
-    .header {
-      padding: 14px 20px;
-      border-bottom: 1px solid #e2e8f0;
-      display: flex;
+
+    /* Action Sheet / Hold Menu */
+    .action-sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.35);
+      z-index: 40;
+      display: none;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      padding: 16px;
+    }
+    .action-sheet-backdrop.open {
+      display: flex;
+    }
+    .action-sheet {
+      width: 100%;
+      max-width: 300px;
       background: #ffffff;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+      border: 1px solid #e5e7eb;
     }
-    .header h1 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 700;
+    .action-option {
+      width: 100%;
+      padding: 14px 16px;
+      border: none;
+      background: #ffffff;
+      font-size: 15px;
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+      display: block;
     }
+    .action-option + .action-option {
+      border-top: 1px solid #f3f4f6;
+    }
+    .action-option:hover {
+      background: #f9fafb;
+    }
+    .action-option.rename {
+      color: #111827;
+    }
+    .action-option.delete {
+      color: #dc2626;
+      font-weight: 600;
+    }
+
+    /* Chat Area */
     .chat-area {
       flex: 1;
       overflow-y: auto;
-      padding: 20px;
+      padding: 18px 16px;
       display: flex;
       flex-direction: column;
       gap: 14px;
-      background: #f8fafc;
+      background: #ffffff;
     }
-    .message-row {
+    .msg-row {
       display: flex;
       flex-direction: column;
-      max-width: 80%;
+      max-width: 84%;
     }
-    .message-row.user {
+    .msg-row.user {
       align-self: flex-end;
       align-items: flex-end;
     }
-    .message-row.assistant {
+    .msg-row.assistant {
       align-self: flex-start;
       align-items: flex-start;
     }
-    .sender {
-      font-size: 12px;
-      color: #64748b;
+    .msg-label {
+      font-size: 11px;
+      color: #6b7280;
       margin-bottom: 4px;
       padding: 0 4px;
     }
     .bubble {
-      padding: 12px 15px;
-      border-radius: 14px;
-      line-height: 1.55;
+      padding: 11px 15px;
+      border-radius: 16px;
       font-size: 15px;
+      line-height: 1.55;
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .message-row.user .bubble {
-      background: #0f172a;
+    .msg-row.user .bubble {
+      background: #111827;
       color: #ffffff;
       border-bottom-right-radius: 4px;
     }
-    .message-row.assistant .bubble {
-      background: #ffffff;
-      color: #0f172a;
-      border: 1px solid #e2e8f0;
+    .msg-row.assistant .bubble {
+      background: #f3f4f6;
+      color: #111827;
       border-bottom-left-radius: 4px;
     }
-    .input-area {
-      padding: 14px 18px;
-      border-top: 1px solid #e2e8f0;
+
+    /* Composer */
+    .composer {
+      padding: 12px 14px;
+      border-top: 1px solid #e5e7eb;
       background: #ffffff;
     }
-    form {
+    .composer form {
       display: flex;
-      gap: 10px;
+      gap: 8px;
+      align-items: center;
     }
-    input {
+    .composer input {
       flex: 1;
       padding: 12px 14px;
-      border: 1px solid #cbd5e1;
-      border-radius: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 22px;
       font-size: 15px;
       outline: none;
+      color: #111827;
     }
-    input:focus {
-      border-color: #0f172a;
+    .composer input:focus {
+      border-color: #111827;
     }
-    button[type="submit"] {
-      padding: 12px 20px;
+    .send-btn {
+      padding: 12px 18px;
       border: none;
-      border-radius: 10px;
-      background: #0f172a;
+      border-radius: 22px;
+      background: #111827;
       color: #ffffff;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
     }
-    button:disabled {
-      opacity: 0.6;
+    .send-btn:disabled {
+      opacity: 0.55;
       cursor: not-allowed;
-    }
-    @media (max-width: 720px) {
-      .app {
-        flex-direction: column;
-        height: 92vh;
-      }
-      .sidebar {
-        width: 100%;
-        max-height: 150px;
-        border-right: none;
-        border-bottom: 1px solid #e2e8f0;
-      }
     }
   </style>
 </head>
 <body>
   <div class="app">
-    <aside class="sidebar">
-      <button id="new-chat-btn" class="new-chat-btn" type="button">+ New Chat</button>
-      <div class="history-title">Chat History</div>
-      <div id="history-list" class="history-list"></div>
-    </aside>
-
-    <section class="main">
-      <div class="header">
-        <h1>GRAI</h1>
+    <header class="topbar">
+      <div class="left-group">
+        <button id="menu-btn" class="menu-btn" type="button" aria-label="Chat history">
+          <span></span>
+          <span></span>
+        </button>
+        <h1 class="brand-title">GRAI</h1>
       </div>
+      <button id="new-chat-btn" class="new-chat-top-btn" type="button">New Chat</button>
+    </header>
 
-      <div id="chat" class="chat-area"></div>
+    <main id="chat-area" class="chat-area"></main>
 
-      <div class="input-area">
-        <form id="chat-form">
-          <input
-            id="prompt"
-            type="text"
-            placeholder="Message GRAI..."
-            required
-            autocomplete="off"
-          />
-          <button id="send-btn" type="submit">Send</button>
-        </form>
-      </div>
-    </section>
+    <div class="composer">
+      <form id="chat-form">
+        <input
+          id="prompt-input"
+          type="text"
+          placeholder="Message GRAI..."
+          required
+          autocomplete="off"
+        />
+        <button id="send-btn" class="send-btn" type="submit">Send</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="backdrop" class="backdrop"></div>
+  <aside id="drawer" class="drawer" aria-label="Conversation history">
+    <div class="drawer-header">
+      <span class="drawer-heading">Chat History</span>
+      <button id="close-drawer-btn" class="close-drawer-btn" type="button" aria-label="Close">×</button>
+    </div>
+    <div id="history-list" class="history-list"></div>
+  </aside>
+
+  <div id="action-sheet-backdrop" class="action-sheet-backdrop">
+    <div class="action-sheet" role="menu">
+      <button id="rename-option-btn" class="action-option rename" type="button">Rename</button>
+      <button id="delete-option-btn" class="action-option delete" type="button">Delete Chat</button>
+    </div>
   </div>
 
   <script>
-    const STORAGE_KEY = "grai_sessions_v1";
-    const chatEl = document.getElementById("chat");
-    const historyListEl = document.getElementById("history-list");
-    const formEl = document.getElementById("chat-form");
-    const inputEl = document.getElementById("prompt");
-    const sendBtn = document.getElementById("send-btn");
-    const newChatBtn = document.getElementById("new-chat-btn");
+    const STORAGE_KEY = "grai_conversations_v2";
 
+    const menuBtn = document.getElementById("menu-btn");
+    const newChatBtn = document.getElementById("new-chat-btn");
+    const backdrop = document.getElementById("backdrop");
+    const drawer = document.getElementById("drawer");
+    const closeDrawerBtn = document.getElementById("close-drawer-btn");
+    const historyListEl = document.getElementById("history-list");
+    const chatAreaEl = document.getElementById("chat-area");
+    const chatFormEl = document.getElementById("chat-form");
+    const promptInputEl = document.getElementById("prompt-input");
+    const sendBtnEl = document.getElementById("send-btn");
+
+    const actionBackdropEl = document.getElementById("action-sheet-backdrop");
+    const renameOptionBtn = document.getElementById("rename-option-btn");
+    const deleteOptionBtn = document.getElementById("delete-option-btn");
+
+    let selectedSessionIdForAction = null;
     let state = loadState();
 
-    function createSession() {
+    function createNewSession() {
       return {
-        id: Date.now().toString() + "_" + Math.random().toString(36).slice(2, 7),
+        id: "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
         title: "New Chat",
         messages: [],
       };
@@ -277,16 +382,16 @@
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-            const activeExists = parsed.sessions.some((s) => s.id === parsed.activeId);
+            const exists = parsed.sessions.some((s) => s.id === parsed.activeId);
             return {
               sessions: parsed.sessions,
-              activeId: activeExists ? parsed.activeId : parsed.sessions[0].id,
+              activeId: exists ? parsed.activeId : parsed.sessions[0].id,
             };
           }
         }
       } catch {}
-      const initial = createSession();
-      return { sessions: [initial], activeId: initial.id };
+      const first = createNewSession();
+      return { sessions: [first], activeId: first.id };
     }
 
     function saveState() {
@@ -299,129 +404,193 @@
       return state.sessions.find((s) => s.id === state.activeId) || state.sessions[0];
     }
 
-    function renderMessage(role, text) {
-      const row = document.createElement("div");
-      row.className = `message-row ${role}`;
-
-      const sender = document.createElement("div");
-      sender.className = "sender";
-      sender.textContent = role === "user" ? "You" : "GRAI";
-
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = text;
-
-      row.appendChild(sender);
-      row.appendChild(bubble);
-      chatEl.appendChild(row);
+    function openDrawer() {
+      drawer.classList.add("open");
+      backdrop.classList.add("open");
     }
 
-    function renderHistoryList() {
-      historyListEl.innerHTML = "";
-      for (const session of state.sessions) {
-        const item = document.createElement("div");
-        item.className = `history-item ${session.id === state.activeId ? "active" : ""}`;
-        item.addEventListener("click", () => {
-          state.activeId = session.id;
-          saveState();
-          renderAll();
-        });
+    function closeDrawer() {
+      drawer.classList.remove("open");
+      backdrop.classList.remove("open");
+    }
 
-        const label = document.createElement("span");
-        label.className = "history-label";
-        label.textContent = session.title || "New Chat";
+    function openActionMenu(sessionId) {
+      selectedSessionIdForAction = sessionId;
+      actionBackdropEl.classList.add("open");
+    }
 
-        const delBtn = document.createElement("button");
-        delBtn.type = "button";
-        delBtn.className = "delete-btn";
-        delBtn.title = "Delete chat";
-        delBtn.textContent = "×";
-        delBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          deleteSession(session.id);
-        });
+    function closeActionMenu() {
+      selectedSessionIdForAction = null;
+      actionBackdropEl.classList.remove("open");
+    }
 
-        item.appendChild(label);
-        item.appendChild(delBtn);
-        historyListEl.appendChild(item);
+    menuBtn.addEventListener("click", openDrawer);
+    closeDrawerBtn.addEventListener("click", closeDrawer);
+    backdrop.addEventListener("click", closeDrawer);
+
+    actionBackdropEl.addEventListener("click", (e) => {
+      if (e.target === actionBackdropEl) {
+        closeActionMenu();
       }
-    }
+    });
 
-    function deleteSession(sessionId) {
-      const remaining = state.sessions.filter((s) => s.id !== sessionId);
+    renameOptionBtn.addEventListener("click", () => {
+      const targetId = selectedSessionIdForAction;
+      closeActionMenu();
+      if (!targetId) return;
+      const target = state.sessions.find((s) => s.id === targetId);
+      if (!target) return;
+      const nextTitle = prompt("Rename chat:", target.title || "New Chat");
+      if (nextTitle && nextTitle.trim()) {
+        target.title = nextTitle.trim().slice(0, 60);
+        saveState();
+        renderHistory();
+      }
+    });
+
+    deleteOptionBtn.addEventListener("click", () => {
+      const targetId = selectedSessionIdForAction;
+      closeActionMenu();
+      if (!targetId) return;
+
+      const remaining = state.sessions.filter((s) => s.id !== targetId);
       if (remaining.length === 0) {
-        const fresh = createSession();
+        const fresh = createNewSession();
         state.sessions = [fresh];
         state.activeId = fresh.id;
       } else {
         state.sessions = remaining;
-        if (state.activeId === sessionId) {
+        if (state.activeId === targetId) {
           state.activeId = remaining[0].id;
         }
       }
       saveState();
       renderAll();
-    }
-
-    function renderChat() {
-      const active = getActiveSession();
-      chatEl.innerHTML = "";
-
-      if (!active.messages || active.messages.length === 0) {
-        renderMessage("assistant", "Hello! I am GRAI. How can I help you?");
-      } else {
-        for (const msg of active.messages) {
-          renderMessage(msg.role, msg.content);
-        }
-      }
-      chatEl.scrollTop = chatEl.scrollHeight;
-    }
-
-    function renderAll() {
-      renderHistoryList();
-      renderChat();
-    }
+    });
 
     newChatBtn.addEventListener("click", () => {
-      const fresh = createSession();
+      const fresh = createNewSession();
       state.sessions.unshift(fresh);
       state.activeId = fresh.id;
       saveState();
+      closeDrawer();
       renderAll();
-      inputEl.focus();
+      promptInputEl.focus();
     });
 
-    formEl.addEventListener("submit", async (e) => {
+    function renderHistory() {
+      historyListEl.innerHTML = "";
+      for (const session of state.sessions) {
+        const item = document.createElement("div");
+        item.className = "history-item" + (session.id === state.activeId ? " active" : "");
+        item.textContent = session.title || "New Chat";
+
+        let pressTimer = null;
+        let longPressed = false;
+
+        const startPress = () => {
+          longPressed = false;
+          pressTimer = setTimeout(() => {
+            longPressed = true;
+            openActionMenu(session.id);
+          }, 500);
+        };
+
+        const cancelPress = () => {
+          if (pressTimer) {
+            clearTimeout(pressTimer);
+            pressTimer = null;
+          }
+        };
+
+        item.addEventListener("touchstart", startPress, { passive: true });
+        item.addEventListener("touchend", cancelPress);
+        item.addEventListener("touchmove", cancelPress);
+        item.addEventListener("mousedown", startPress);
+        item.addEventListener("mouseup", cancelPress);
+        item.addEventListener("mouseleave", cancelPress);
+
+        item.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          cancelPress();
+          openActionMenu(session.id);
+        });
+
+        item.addEventListener("click", () => {
+          if (longPressed) {
+            longPressed = false;
+            return;
+          }
+          state.activeId = session.id;
+          saveState();
+          closeDrawer();
+          renderAll();
+        });
+
+        historyListEl.appendChild(item);
+      }
+    }
+
+    function buildMessageElement(role, text) {
+      const row = document.createElement("div");
+      row.className = "msg-row " + role;
+
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = role === "user" ? "You" : "GRAI";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+
+      row.appendChild(label);
+      row.appendChild(bubble);
+      return row;
+    }
+
+    function renderMessages() {
+      const active = getActiveSession();
+      chatAreaEl.innerHTML = "";
+
+      if (!active.messages || active.messages.length === 0) {
+        chatAreaEl.appendChild(
+          buildMessageElement("assistant", "Hello! I am GRAI. How can I help you?")
+        );
+      } else {
+        for (const msg of active.messages) {
+          chatAreaEl.appendChild(buildMessageElement(msg.role, msg.content));
+        }
+      }
+      chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
+    }
+
+    function renderAll() {
+      renderHistory();
+      renderMessages();
+    }
+
+    chatFormEl.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const text = inputEl.value.trim();
+      const text = promptInputEl.value.trim();
       if (!text) return;
 
       const active = getActiveSession();
-      const previousHistory = [...active.messages];
+      const historyBeforeThisTurn = [...active.messages];
 
-      if (!active.messages.length) {
-        active.title = text.slice(0, 32);
+      if (active.messages.length === 0 && active.title === "New Chat") {
+        active.title = text.slice(0, 36);
       }
 
       active.messages.push({ role: "user", content: text });
       saveState();
       renderAll();
 
-      inputEl.value = "";
-      sendBtn.disabled = true;
+      promptInputEl.value = "";
+      sendBtnEl.disabled = true;
 
-      const loadingRow = document.createElement("div");
-      loadingRow.className = "message-row assistant";
-      const loadingSender = document.createElement("div");
-      loadingSender.className = "sender";
-      loadingSender.textContent = "GRAI";
-      const loadingBubble = document.createElement("div");
-      loadingBubble.className = "bubble";
-      loadingBubble.textContent = "Thinking...";
-      loadingRow.appendChild(loadingSender);
-      loadingRow.appendChild(loadingBubble);
-      chatEl.appendChild(loadingRow);
-      chatEl.scrollTop = chatEl.scrollHeight;
+      const typingEl = buildMessageElement("assistant", "...");
+      chatAreaEl.appendChild(typingEl);
+      chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
 
       try {
         const res = await fetch("/api/chat", {
@@ -429,7 +598,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            history: previousHistory,
+            history: historyBeforeThisTurn,
           }),
         });
 
@@ -438,14 +607,16 @@
         try {
           data = rawText ? JSON.parse(rawText) : {};
         } catch {
-          data = { error: rawText || "Invalid server response." };
+          data = { error: rawText || "Invalid response from server." };
         }
 
-        loadingRow.remove();
+        typingEl.remove();
 
         if (!res.ok) {
-          const errMsg = data?.error || `Request failed (${res.status})`;
-          renderMessage("assistant", `Error: ${errMsg}`);
+          const errText = "Error: " + (data?.error || "Failed to get response.");
+          active.messages.push({ role: "assistant", content: errText });
+          saveState();
+          renderAll();
           return;
         }
 
@@ -454,12 +625,17 @@
         saveState();
         renderAll();
       } catch (err) {
-        loadingRow.remove();
-        renderMessage("assistant", `Error: ${err?.message || "Network or server error occurred."}`);
+        typingEl.remove();
+        active.messages.push({
+          role: "assistant",
+          content: "Error: " + (err?.message || "Network or server error occurred."),
+        });
+        saveState();
+        renderAll();
       } finally {
-        sendBtn.disabled = false;
-        chatEl.scrollTop = chatEl.scrollHeight;
-        inputEl.focus();
+        sendBtnEl.disabled = false;
+        chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
+        promptInputEl.focus();
       }
     });
 
