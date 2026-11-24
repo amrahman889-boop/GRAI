@@ -5,6 +5,13 @@ You are GRAI, a helpful, natural AI assistant.
 - Keep track of all previous messages and replies in the conversation accurately.
 `.trim();
 
+const FREE_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "qwen/qwen-2.5-72b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
+  "openrouter/free",
+];
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -45,34 +52,45 @@ module.exports = async function handler(req, res) {
       { role: "user", content: message.trim() },
     ];
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-      }),
-    });
+    let lastErrorMessage = "OpenRouter API request failed.";
 
-    const data = await response.json();
+    for (const model of FREE_MODELS) {
+      try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://grai-omega.vercel.app",
+            "X-Title": "GRAI",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+          }),
+        });
 
-    if (!response.ok) {
-      return res.status(response.status).json({
-        error: data?.error?.message || "OpenAI API request failed.",
-      });
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          lastErrorMessage = data?.error?.message || `Model ${model} failed (${response.status}).`;
+          continue;
+        }
+
+        const replyText = data?.choices?.[0]?.message?.content?.trim();
+        if (replyText) {
+          return res.status(200).json({ reply: replyText });
+        }
+
+        lastErrorMessage = `Empty response from model ${model}.`;
+      } catch (err) {
+        lastErrorMessage = err?.message || `Network error with model ${model}.`;
+      }
     }
 
-    const replyText = data?.choices?.[0]?.message?.content?.trim();
-    if (!replyText) {
-      return res.status(500).json({ error: "Empty response received from GRAI." });
-    }
-
-    return res.status(200).json({ reply: replyText });
+    return res.status(500).json({ error: lastErrorMessage });
   } catch (err) {
-    console.error("GRAI API error:", err);
+    console.error("GRAI OpenRouter error:", err);
     return res.status(500).json({
       error: err?.message || "Failed to generate response from server.",
     });
