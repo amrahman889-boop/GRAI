@@ -7,6 +7,39 @@ You are GRAI, a helpful, natural AI assistant.
 - Keep track of all previous messages and replies in the conversation accurately.
 `.trim();
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function generateWithRetry(ai, contents, retries = 3) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await ai.models.generateContent({
+        model: "gemini-3.8-flash",
+        contents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      const msg = String(err?.message || "");
+      const isTemporary =
+        msg.includes("503") ||
+        msg.includes("UNAVAILABLE") ||
+        msg.includes("429") ||
+        msg.includes("high demand");
+
+      if (!isTemporary || attempt === retries) {
+        throw err;
+      }
+      await sleep(700 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -51,15 +84,9 @@ module.exports = async function handler(req, res) {
       },
     ];
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-      },
-    });
-
+    const response = await generateWithRetry(ai, contents, 3);
     const replyText = response?.text?.trim();
+
     if (!replyText) {
       return res.status(500).json({ error: "Empty response received from GRAI." });
     }
