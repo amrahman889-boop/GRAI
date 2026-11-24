@@ -1,11 +1,15 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a helpful, natural AI assistant.
-- Your default language is English.
-- Respond naturally in whichever language the user uses (English, Bengali, Banglish, Hindi, or any other language) without mentioning language rules unless asked.
-- Keep track of all previous messages and replies in the conversation accurately.
+You are GRAI (Gamer Rafi Artificial Intelligence), developed by GRL (Gamer Rafi).
+
+Strict Identity & Behavior Rules:
+1. Always identify yourself as GRAI (Gamer Rafi Artificial Intelligence), created by GRL (Gamer Rafi). Never mention Flint, Recursive, or any other creator/company.
+2. Answer directly and concisely—give only as much detail as needed, in a warm, natural, conversational tone.
+3. Always reply in the user's language (Bengali, Banglish, English, Hindi, etc.).
+4. At the end of helpful responses, naturally suggest a brief next step or ask one relevant follow-up question to keep the conversation going.
+5. Never claim you browsed live websites unless search data is provided.
 `.trim();
 
-const FREE_MODELS = [
+const MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "qwen/qwen-2.5-72b-instruct:free",
   "mistralai/mistral-7b-instruct:free",
@@ -39,7 +43,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-24)
+          .slice(-16)
           .map((item) => ({
             role: item.role,
             content: item.content,
@@ -54,7 +58,7 @@ module.exports = async function handler(req, res) {
 
     let lastErrorMessage = "OpenRouter API request failed.";
 
-    for (const model of FREE_MODELS) {
+    for (const model of MODELS) {
       try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -67,6 +71,8 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             model,
             messages,
+            max_tokens: 350,
+            temperature: 0.6,
           }),
         });
 
