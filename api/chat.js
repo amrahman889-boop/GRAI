@@ -1,12 +1,19 @@
 const SYSTEM_PROMPT = `
-You are GRAI (Gamer Rafi Artificial Intelligence), developed by GRL (Gamer Rafi).
+You are GRAI, a helpful, smart, natural AI assistant.
+Speak in a warm, human-like, clear AI assistant tone—give only as much detail as needed, and end helpful replies with one short, natural follow-up question or suggestion to keep the conversation going.
+Always reply in the language the user uses (Bengali, Banglish, English, Hindi, or others) with clean, accurate spelling. Do not mix unrelated languages randomly.
 
-Strict Identity & Behavior Rules:
-1. Always identify yourself as GRAI (Gamer Rafi Artificial Intelligence), created by GRL (Gamer Rafi). Never mention Flint, Recursive, or any other creator/company.
-2. Answer directly and concisely—give only as much detail as needed, in a warm, natural, conversational tone.
-3. Always reply in the user's language (Bengali, Banglish, English, Hindi, etc.).
-4. At the end of helpful responses, naturally suggest a brief next step or ask one relevant follow-up question to keep the conversation going.
-5. Never claim you browsed live websites unless search data is provided.
+Identity Rules:
+- If asked who you are or who made/developed you (e.g., "তুমি কে?", "তোমাকে কে বানাইছে?", "who are you?", "who made you?"), reply simply using GRAI and GRL without giving full forms unless asked.
+- Only when asked what GRAI or GRL means or stands for (e.g., "GRAI মানে কি?", "GRL মানে কি?", full form), state:
+  GRAI = Gamer Rafi Artificial Intelligence
+  GRL = Gamer Rafi Limited
+- Never mention Flint, Recursive, or any other creator/company.
+
+Formatting Rules:
+- Do not wrap every word or phrase in ** asterisks.
+- Use punctuation like (), [], "", and * naturally only when needed to highlight or clarify something.
+- Never pretend you browsed live websites unless search data or user-provided content/attachment is given.
 `.trim();
 
 const MODELS = [
@@ -24,14 +31,15 @@ module.exports = async function handler(req, res) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is missing in Vercel Environment Variables." });
+      return res.status(500).json({ error: "API key is missing in Vercel Environment Variables." });
     }
 
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
-    const { message, history = [] } = body;
+    const { message, history = [], attachment = null } = body;
 
-    if (!message || typeof message !== "string" || !message.trim()) {
-      return res.status(400).json({ error: "Message is required." });
+    const cleanMessage = typeof message === "string" ? message.trim() : "";
+    if (!cleanMessage && !attachment) {
+      return res.status(400).json({ error: "Message or attachment is required." });
     }
 
     const safeHistory = Array.isArray(history)
@@ -43,20 +51,30 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-16)
+          .slice(-14)
           .map((item) => ({
             role: item.role,
             content: item.content,
           }))
       : [];
 
+    let userContent = cleanMessage;
+    if (attachment && attachment.name) {
+      const infoText = `[Attached ${attachment.kind || "file"}: ${attachment.name}${
+        attachment.size ? `, ${Math.round(attachment.size / 1024)} KB` : ""
+      }]`;
+      userContent = cleanMessage
+        ? `${cleanMessage}\n\n${infoText}`
+        : `${infoText}\nPlease help me with this attached item.`;
+    }
+
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...safeHistory,
-      { role: "user", content: message.trim() },
+      { role: "user", content: userContent },
     ];
 
-    let lastErrorMessage = "OpenRouter API request failed.";
+    let lastError = "Could not get a valid response right now.";
 
     for (const model of MODELS) {
       try {
@@ -71,32 +89,33 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             model,
             messages,
-            max_tokens: 350,
-            temperature: 0.6,
+            max_tokens: 320,
+            temperature: 0.55,
           }),
         });
 
         const data = await response.json().catch(() => ({}));
-
         if (!response.ok) {
-          lastErrorMessage = data?.error?.message || `Model ${model} failed (${response.status}).`;
+          lastError = data?.error?.message || `Request failed (${response.status}).`;
           continue;
         }
 
-        const replyText = data?.choices?.[0]?.message?.content?.trim();
+        const rawReply = data?.choices?.[0]?.message?.content;
+        const replyText = typeof rawReply === "string" ? rawReply.trim() : "";
+
         if (replyText) {
           return res.status(200).json({ reply: replyText });
         }
 
-        lastErrorMessage = `Empty response from model ${model}.`;
+        lastError = `Empty reply from ${model}.`;
       } catch (err) {
-        lastErrorMessage = err?.message || `Network error with model ${model}.`;
+        lastError = err?.message || "Network error occurred.";
       }
     }
 
-    return res.status(500).json({ error: lastErrorMessage });
+    return res.status(502).json({ error: lastError });
   } catch (err) {
-    console.error("GRAI OpenRouter error:", err);
+    console.error("GRAI server error:", err);
     return res.status(500).json({
       error: err?.message || "Failed to generate response from server.",
     });
