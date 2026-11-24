@@ -1,61 +1,18 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a helpful, smart, warm, and natural AI assistant.
-Speak naturally like a thoughtful, clear, friendly AI—give only as much detail as needed, keep spelling clean and accurate in the user's language (Bengali, Banglish, English, etc.), and end helpful replies with a natural, relevant follow-up question or suggestion to keep the conversation going.
-
-Identity Rules:
-- When asked who you are or who made/developed you (for example: "তুমি কে?", "তোমাকে কে বানাইছে?", "who are you?", "who made you?"), answer naturally using GRAI and GRL without giving full forms unless asked.
-- Only when asked what GRAI or GRL means or stands for (for example: "GRAI মানে কি?", "GRL মানে কি?", পূর্ণরূপ), explain naturally in conversation that GRAI-এর পূর্ণরূপ Gamer Rafi Artificial Intelligence এবং GRL-এর পূর্ণরূপ Gamer Rafi Limited.
-- Never mention Flint, Recursive, or any other company/creator.
-
-Formatting & Behavior Rules:
-- Do not wrap every word or phrase in ** asterisks. Use punctuation like (), [], "", and * naturally only when helpful.
-- Never return an empty answer. If an image is attached, inspect it carefully and answer based on what is visible in the image; only say you cannot view the image if the image data is genuinely missing or unsupported.
+You are GRAI, a helpful, warm, natural AI assistant.
+Speak naturally and concisely in the user's language (Bengali, Banglish, English, etc.).
+When asked who you are or who made you, answer simply using GRAI and GRL without giving full forms unless asked.
+Only when asked what GRAI or GRL means or stands for, explain naturally that GRAI-এর পূর্ণরূপ Gamer Rafi Artificial Intelligence এবং GRL-এর পূর্ণরূপ Gamer Rafi Limited.
+Never mention Flint, Recursive, or any other creator/company.
+Do not wrap every word in ** asterisks. End helpful replies with one short, relevant follow-up question.
 `.trim();
 
-const MODELS = [
-  "meta-llama/llama-3.2-11b-vision-instruct:free",
-  "google/gemma-3-27b-it:free",
+const TEXT_MODELS = [
   "meta-llama/llama-3.3-70b-instruct:free",
   "qwen/qwen-2.5-72b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
   "openrouter/free",
 ];
-
-function buildUserContent(message, attachment) {
-  const cleanMessage = typeof message === "string" ? message.trim() : "";
-  const hasImageData =
-    attachment &&
-    typeof attachment.dataUrl === "string" &&
-    attachment.dataUrl.startsWith("data:image/");
-
-  if (hasImageData) {
-    const parts = [
-      {
-        type: "text",
-        text:
-          cleanMessage ||
-          "এই ছবিতে কী দেখা যাচ্ছে বা কী লেখা আছে, তা সহজ ও পরিষ্কারভাবে বলো।",
-      },
-      {
-        type: "image_url",
-        image_url: {
-          url: attachment.dataUrl,
-        },
-      },
-    ];
-    return parts;
-  }
-
-  if (attachment && attachment.name) {
-    const fileNote = `[Attached ${attachment.kind || "file"}: ${attachment.name}${
-      attachment.size ? `, ${Math.round(attachment.size / 1024)} KB` : ""
-    }]`;
-    return cleanMessage
-      ? `${cleanMessage}\n\n${fileNote}`
-      : `${fileNote}\nএই ফাইলটি সম্পর্কে কীভাবে সাহায্য করতে পারি?`;
-  }
-
-  return cleanMessage;
-}
 
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
@@ -92,22 +49,21 @@ module.exports = async function handler(req, res) {
           }))
       : [];
 
-    const currentUserContent = buildUserContent(cleanMessage, attachment);
-    const hasImage = Array.isArray(currentUserContent);
-
-    const candidateModels = hasImage
-      ? MODELS
-      : MODELS.filter((m) => !m.includes("vision"));
+    let promptText = cleanMessage;
+    if (attachment && attachment.name) {
+      const note = `[User attached ${attachment.kind || "file"} named "${attachment.name}". Note: Free text models cannot inspect raw image pixels reliably; if it's an image, tell the user clearly that image viewing needs a vision-enabled/paid model and ask what's in the image.]`;
+      promptText = cleanMessage ? `${cleanMessage}\n\n${note}` : note;
+    }
 
     const messages = [
       { role: "system", content: SYSTEM_PROMPT },
       ...safeHistory,
-      { role: "user", content: currentUserContent },
+      { role: "user", content: promptText },
     ];
 
-    let lastError = "সার্ভার থেকে সঠিক উত্তর পাওয়া যায়নি, একটু পর আবার চেষ্টা করুন।";
+    let lastError = "No valid response received from models.";
 
-    for (const model of candidateModels) {
+    for (const model of TEXT_MODELS) {
       try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
@@ -120,38 +76,31 @@ module.exports = async function handler(req, res) {
           body: JSON.stringify({
             model,
             messages,
-            max_tokens: 400,
-            temperature: 0.65,
+            max_tokens: 350,
+            temperature: 0.6,
           }),
         });
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
-          lastError = data?.error?.message || `Model error (${response.status}).`;
+          lastError = data?.error?.message || `Model ${model} failed (${response.status}).`;
           continue;
         }
 
-        const rawReply = data?.choices?.[0]?.message?.content;
-        const replyText = typeof rawReply === "string" ? rawReply.trim() : "";
-
-        if (replyText) {
-          return res.status(200).json({ reply: replyText });
+        const replyText = data?.choices?.[0]?.message?.content;
+        if (typeof replyText === "string" && replyText.trim()) {
+          return res.status(200).json({ reply: replyText.trim() });
         }
 
         lastError = `Empty response from ${model}.`;
       } catch (err) {
-        lastError = err?.message || "Network error occurred.";
+        lastError = err?.message || "Network error.";
       }
     }
 
-    return res.status(200).json({
-      reply:
-        "এই মুহূর্তে ফ্রি সার্ভারগুলো একটু ব্যস্ত থাকায় পুরো উত্তর আনতে পারিনি। একটু পর আবার মেসেজ পাঠালে আমি সাহায্য করতে পারব—আর কী জানতে চাচ্ছেন?",
-    });
+    return res.status(502).json({ error: lastError });
   } catch (err) {
-    console.error("GRAI server error:", err);
-    return res.status(500).json({
-      error: err?.message || "Failed to generate response from server.",
-    });
+    console.error("GRAI error:", err);
+    return res.status(500).json({ error: err?.message || "Server error." });
   }
 };
