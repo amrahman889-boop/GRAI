@@ -7,36 +7,47 @@ You are GRAI, a helpful, natural AI assistant.
 - Keep track of all previous messages and replies in the conversation accurately.
 `.trim();
 
+const MODELS = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-flash-latest"];
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function generateWithRetry(ai, contents, retries = 3) {
+async function generateWithFallback(ai, contents) {
   let lastError;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents,
-        config: {
-          systemInstruction: SYSTEM_PROMPT,
-        },
-      });
-    } catch (err) {
-      lastError = err;
-      const msg = String(err?.message || "");
-      const isTemporary =
-        msg.includes("503") ||
-        msg.includes("UNAVAILABLE") ||
-        msg.includes("429") ||
-        msg.includes("high demand");
 
-      if (!isTemporary || attempt === retries) {
-        throw err;
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+          },
+        });
+      } catch (err) {
+        lastError = err;
+        const msg = String(err?.message || "");
+        const isBusyOrNotFound =
+          msg.includes("503") ||
+          msg.includes("UNAVAILABLE") ||
+          msg.includes("429") ||
+          msg.includes("high demand") ||
+          msg.includes("404") ||
+          msg.includes("NOT_FOUND");
+
+        if (!isBusyOrNotFound) {
+          throw err;
+        }
+
+        if (attempt === 0) {
+          await sleep(500);
+        }
       }
-      await sleep(700 * (attempt + 1));
     }
   }
+
   throw lastError;
 }
 
@@ -84,7 +95,7 @@ module.exports = async function handler(req, res) {
       },
     ];
 
-    const response = await generateWithRetry(ai, contents, 3);
+    const response = await generateWithFallback(ai, contents);
     const replyText = response?.text?.trim();
 
     if (!replyText) {
