@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GRAI</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f5f7; margin: 0; padding: 20px; }
+    .box { max-width: 720px; margin: 0 auto; background: #fff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+    #chat { height: 420px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-bottom: 14px; background: #fafafa; }
+    .msg { margin-bottom: 12px; line-height: 1.5; white-space: pre-wrap; }
+    .user { font-weight: bold; color: #1d4ed8; }
+    .ai { color: #111827; }
+    form { display: flex; gap: 10px; }
+    input { flex: 1; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; }
+    button { padding: 10px 18px; border: none; border-radius: 8px; background: #111827; color: #fff; cursor: pointer; font-size: 15px; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>GRAI</h2>
+    <div id="chat"></div>
+    <form id="chat-form">
+      <input id="prompt" type="text" placeholder="GRAI-কে কিছু লিখুন..." required autocomplete="off" />
+      <button id="send-btn" type="submit">পাঠান</button>
+    </form>
+  </div>
+
+  <script>
+    const chatEl = document.getElementById("chat");
+    const formEl = document.getElementById("chat-form");
+    const inputEl = document.getElementById("prompt");
+    const sendBtn = document.getElementById("send-btn");
+    const history = [];
+
+    function appendMessage(sender, text, cls) {
+      const div = document.createElement("div");
+      div.className = `msg ${cls}`;
+      div.textContent = `${sender}: ${text}`;
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+    }
+
+    formEl.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      appendMessage("আপনি", text, "user");
+      inputEl.value = "";
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text, history }),
+        });
+        const data = await res.json();
+        const reply = data.reply || data.error || "ত্রুটি হয়েছে";
+        appendMessage("GRAI", reply, "ai");
+        history.push({ role: "user", content: text });
+        history.push({ role: "assistant", content: reply });
+      } catch (err) {
+        appendMessage("GRAI", "নেটওয়ার্ক বা সার্ভার সমস্যা হয়েছে।", "ai");
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    });
+  </script>
+</body>
+</html>
