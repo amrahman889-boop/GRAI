@@ -9,46 +9,25 @@ You are GRAI, a helpful, natural AI assistant.
 
 const MODELS = ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-flash-latest"];
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function generateWithFallback(ai, contents) {
+async function tryModelsOnce(ai, contents) {
   let lastError;
-
   for (const model of MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        return await ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-          },
-        });
-      } catch (err) {
-        lastError = err;
-        const msg = String(err?.message || "");
-        const isBusyOrNotFound =
-          msg.includes("503") ||
-          msg.includes("UNAVAILABLE") ||
-          msg.includes("429") ||
-          msg.includes("high demand") ||
-          msg.includes("404") ||
-          msg.includes("NOT_FOUND");
-
-        if (!isBusyOrNotFound) {
-          throw err;
-        }
-
-        if (attempt === 0) {
-          await sleep(500);
-        }
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+        },
+      });
+      if (response?.text?.trim()) {
+        return response.text.trim();
       }
+    } catch (err) {
+      lastError = err;
     }
   }
-
-  throw lastError;
+  throw lastError || new Error("No response received from any model.");
 }
 
 module.exports = async function handler(req, res) {
@@ -80,7 +59,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-30)
+          .slice(-24)
           .map((item) => ({
             role: item.role === "assistant" ? "model" : "user",
             parts: [{ text: item.content }],
@@ -95,13 +74,7 @@ module.exports = async function handler(req, res) {
       },
     ];
 
-    const response = await generateWithFallback(ai, contents);
-    const replyText = response?.text?.trim();
-
-    if (!replyText) {
-      return res.status(500).json({ error: "Empty response received from GRAI." });
-    }
-
+    const replyText = await tryModelsOnce(ai, contents);
     return res.status(200).json({ reply: replyText });
   } catch (err) {
     console.error("GRAI API error:", err);
