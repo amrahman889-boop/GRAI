@@ -3,8 +3,8 @@ const { GoogleGenAI } = require("@google/genai");
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, natural AI assistant.
 - Your default language is English.
-- Respond naturally in whichever language the user uses (English, Bengali, Banglish, Hindi, or any other language) without bringing up language rules unless asked.
-- Keep track of the conversation context accurately.
+- Respond naturally in whichever language the user uses (English, Bengali, Banglish, Hindi, or any other language) without mentioning language rules unless asked.
+- Keep track of all previous messages and replies in the conversation accurately.
 `.trim();
 
 module.exports = async function handler(req, res) {
@@ -36,7 +36,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-20)
+          .slice(-30)
           .map((item) => ({
             role: item.role === "assistant" ? "model" : "user",
             parts: [{ text: item.content }],
@@ -52,7 +52,7 @@ module.exports = async function handler(req, res) {
     ];
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.8-flash",
       contents,
       config: {
         systemInstruction: SYSTEM_PROMPT,
