@@ -32,12 +32,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const apiToken = process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY;
-    const accountId = CF_ACCOUNT_ID;
+    const apiToken = (process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY || "").trim();
+    const accountId = (CF_ACCOUNT_ID || "").trim();
 
     if (!accountId || !apiToken) {
-      return res.status(500).json({
-        error: "GEMINI_API_KEY is missing in Vercel Environment Variables.",
+      return res.status(200).json({
+        reply: "Debug: Missing accountId or API token in environment variables.",
       });
     }
 
@@ -46,96 +46,4 @@ module.exports = async function handler(req, res) {
 
     const cleanMessage = typeof message === "string" ? message.trim() : "";
     if (!cleanMessage && !attachment) {
-      return res.status(400).json({ error: "Message or attachment is required." });
-    }
-
-    const wantsEnglish = /[a-zA-Z]/.test(cleanMessage) && !/[\u0980-\u09FF]/.test(cleanMessage);
-    const fallbackErrorText = wantsEnglish ? "Temporary issue" : "সাময়িক সমস্যা";
-
-    const imageBytes = attachment ? dataUrlToByteArray(attachment.dataUrl) : null;
-
-    if (imageBytes) {
-      const visionEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${VISION_MODEL}`;
-      const promptForImage =
-        cleanMessage ||
-        "Describe clearly what is shown or written in this image.";
-
-      const visionRes = await fetch(visionEndpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: `${SYSTEM_PROMPT}\n\nUser request: ${promptForImage}`,
-          image: imageBytes,
-          max_tokens: 450,
-        }),
-      });
-
-      const visionData = await visionRes.json().catch(() => ({}));
-      const visionReply = visionData?.result?.response;
-
-      if (visionRes.ok && typeof visionReply === "string" && visionReply.trim()) {
-        return res.status(200).json({ reply: visionReply.trim() });
-      }
-
-      return res.status(200).json({ reply: fallbackErrorText });
-    }
-
-    const safeHistory = Array.isArray(history)
-      ? history
-          .filter(
-            (item) =>
-              item &&
-              (item.role === "user" || item.role === "assistant") &&
-              typeof item.content === "string" &&
-              item.content.trim()
-          )
-          .slice(-12)
-          .map((item) => ({
-            role: item.role,
-            content: item.content.trim(),
-          }))
-      : [];
-
-    let userPrompt = cleanMessage;
-    if (attachment && attachment.name) {
-      userPrompt = cleanMessage
-        ? `${cleanMessage}\n\n[Attached file: ${attachment.name}]`
-        : `[Attached file: ${attachment.name}] Please help me with this.`;
-    }
-
-    const messages = [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...safeHistory,
-      { role: "user", content: userPrompt },
-    ];
-
-    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
-
-    const response = await fetch(textEndpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        max_tokens: 500,
-        temperature: 0.55,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const replyText = data?.result?.response;
-
-    if (response.ok && typeof replyText === "string" && replyText.trim()) {
-      return res.status(200).json({ reply: replyText.trim() });
-    }
-
-    return res.status(200).json({ reply: fallbackErrorText });
-  } catch {
-    return res.status(200).json({ reply: "সাময়িক সমস্যা" });
-  }
-};
+      return res.status(200).json({ reply: "Debug: Empty message
