@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-Keep replies concise, clear, and well-structured so they never get cut off mid-sentence. Always finish your final sentence properly and end with at most one short follow-up question when helpful.
+Deliver whatever the user asks for clearly and completely, without trailing off or cutting off mid-sentence. Always finish every sentence and thought cleanly.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -98,8 +98,8 @@ module.exports = async function handler(req, res) {
       const imageBytes = Array.from(Buffer.from(imageInfo.base64, "base64"));
 
       const promptText = cleanMessage
-        ? `${cleanMessage} (Reply clearly in the user's language and complete your sentences.)`
-        : "Describe what is clearly visible or written in this image in natural Bengali (or matching text in the image). Keep it concise and complete.";
+        ? `${cleanMessage}\nRespond clearly in the user's language and complete every sentence.`
+        : "Look carefully at what is shown or written in this image and describe it clearly and completely in natural Bengali (or matching text in the image).";
 
       const visionRes = await fetch(visionEndpoint, {
         method: "POST",
@@ -110,7 +110,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           prompt: promptText,
           image: imageBytes,
-          max_tokens: 900,
+          max_tokens: 4096,
           temperature: 0.35,
         }),
       });
@@ -174,7 +174,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         messages,
-        max_tokens: 2048,
+        max_tokens: 8192,
         temperature: 0.55,
       }),
     });
