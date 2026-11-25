@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-Always complete every sentence cleanly with proper punctuation (like ।, ., ?, !). Never stop mid-word or mid-sentence.
+Always complete every sentence cleanly with proper punctuation (।, ., ?, !). Do not stop mid-word or mid-sentence.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -23,6 +23,25 @@ function looksIncomplete(text) {
   const trimmed = text.trim();
   if (trimmed.length < 20) return false;
   return !/[।.!?…"'”’)\]]$/.test(trimmed);
+}
+
+function cleanCutEnding(text) {
+  if (!text || typeof text !== "string") return text;
+  const trimmed = text.trim();
+  if (!looksIncomplete(trimmed)) return trimmed;
+
+  const lastPunctIndex = Math.max(
+    trimmed.lastIndexOf("।"),
+    trimmed.lastIndexOf("."),
+    trimmed.lastIndexOf("?"),
+    trimmed.lastIndexOf("!")
+  );
+
+  if (lastPunctIndex > trimmed.length * 0.5) {
+    return trimmed.slice(0, lastPunctIndex + 1).trim();
+  }
+
+  return `${trimmed}।`;
 }
 
 function extractImageInfo(attachment) {
@@ -217,6 +236,7 @@ module.exports = async function handler(req, res) {
         const needsSpace = !/\s$/.test(replyText) && !/^[।.!?,\s]/.test(extraPart);
         replyText = `${replyText}${needsSpace ? " " : ""}${extraPart.trim()}`;
       }
+      replyText = cleanCutEnding(replyText);
     }
 
     return res.status(200).json({ reply: replyText.trim() });
