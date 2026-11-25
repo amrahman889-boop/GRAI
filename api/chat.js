@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-Deliver whatever the user asks for clearly and completely, without trailing off or cutting off mid-sentence. Always finish every sentence and thought cleanly.
+Always complete every sentence cleanly with proper punctuation (like ।, ., ?, !). Never stop mid-word or mid-sentence.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -15,8 +15,15 @@ Formatting, Vision & Error Rules:
 `.trim();
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "e6c66fe73c44eca9e77db3de2cc6e6ad";
-const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const TEXT_MODEL = "@cf/qwen/qwen2.5-72b-instruct";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
+
+function looksIncomplete(text) {
+  if (!text || typeof text !== "string") return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 20) return false;
+  return !/[।.!?…"'”’)\]]$/.test(trimmed);
+}
 
 function extractImageInfo(attachment) {
   if (!attachment) return null;
@@ -63,6 +70,29 @@ function extractImageInfo(attachment) {
     }
   }
 
+  return null;
+}
+
+async function callCloudflareText(accountId, apiToken, messages, maxTokens = 4096) {
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.55,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  const text = data?.result?.response;
+  if (response.ok && typeof text === "string" && text.trim()) {
+    return text.trim();
+  }
   return null;
 }
 
@@ -144,7 +174,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-10)
+          .slice(-8)
           .map((item) => ({
             role: item.role,
             content: item.content.trim(),
@@ -164,31 +194,32 @@ module.exports = async function handler(req, res) {
       { role: "user", content: userPrompt },
     ];
 
-    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+    let replyText = await callCloudflareText(accountId, apiToken, messages, 4096);
 
-    const response = await fetch(textEndpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        max_tokens: 8192,
-        temperature: 0.55,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const replyText = data?.result?.response;
-
-    if (response.ok && typeof replyText === "string" && replyText.trim()) {
-      return res.status(200).json({ reply: replyText.trim() });
+    if (!replyText) {
+      return res.status(200).json({
+        reply: "সাময়িক সমস্যা",
+      });
     }
 
-    return res.status(200).json({
-      reply: "সাময়িক সমস্যা",
-    });
+    if (looksIncomplete(replyText)) {
+      const tailContext = replyText.slice(-160);
+      const continuationMessages = [
+        ...messages,
+        { role: "assistant", content: replyText },
+        {
+          role: "user",
+          content: `Your previous reply stopped right after: "${tailContext}". Continue naturally from right there and finish the sentence and point cleanly without repeating what is already written.`,
+        },
+      ];
+      const extraPart = await callCloudflareText(accountId, apiToken, continuationMessages, 2048);
+      if (extraPart) {
+        const needsSpace = !/\s$/.test(replyText) && !/^[।.!?,\s]/.test(extraPart);
+        replyText = `${replyText}${needsSpace ? " " : ""}${extraPart.trim()}`;
+      }
+    }
+
+    return res.status(200).json({ reply: replyText.trim() });
   } catch (err) {
     return res.status(200).json({
       reply: "সাময়িক সমস্যা",
