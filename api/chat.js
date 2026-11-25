@@ -46,4 +46,110 @@ module.exports = async function handler(req, res) {
 
     const cleanMessage = typeof message === "string" ? message.trim() : "";
     if (!cleanMessage && !attachment) {
-      return res.status(200).json({ reply: "Debug: Empty message
+      return res.status(200).json({
+        reply: "Debug: Empty message and no attachment.",
+      });
+    }
+
+    const imageBytes = attachment ? dataUrlToByteArray(attachment.dataUrl) : null;
+
+    if (imageBytes) {
+      const visionEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${VISION_MODEL}`;
+      const promptForImage =
+        cleanMessage || "Describe clearly what is shown or written in this image.";
+
+      const visionRes = await fetch(visionEndpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: `${SYSTEM_PROMPT}\n\nUser request: ${promptForImage}`,
+          image: imageBytes,
+          max_tokens: 450,
+        }),
+      });
+
+      const visionData = await visionRes.json().catch(() => ({}));
+      const visionReply = visionData?.result?.response;
+
+      if (visionRes.ok && typeof visionReply === "string" && visionReply.trim()) {
+        return res.status(200).json({ reply: visionReply.trim() });
+      }
+
+      const vErr =
+        visionData?.errors?.[0]?.message ||
+        visionData?.error ||
+        `HTTP ${visionRes.status}`;
+      return res.status(200).json({
+        reply: `Debug Vision: ${vErr}`,
+      });
+    }
+
+    const safeHistory = Array.isArray(history)
+      ? history
+          .filter(
+            (item) =>
+              item &&
+              (item.role === "user" || item.role === "assistant") &&
+              typeof item.content === "string" &&
+              item.content.trim() &&
+              !item.content.trim().startsWith("Debug")
+          )
+          .slice(-12)
+          .map((item) => ({
+            role: item.role,
+            content: item.content.trim(),
+          }))
+      : [];
+
+    let userPrompt = cleanMessage;
+    if (attachment && attachment.name) {
+      userPrompt = cleanMessage
+        ? `${cleanMessage}\n\n[Attached file: ${attachment.name}]`
+        : `[Attached file: ${attachment.name}] Please help me with this.`;
+    }
+
+    const messages = [
+      { role: "system", content: SYSTEM_PROMPT },
+      ...safeHistory,
+      { role: "user", content: userPrompt },
+    ];
+
+    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+
+    const response = await fetch(textEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        max_tokens: 500,
+        temperature: 0.55,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const replyText = data?.result?.response;
+
+    if (response.ok && typeof replyText === "string" && replyText.trim()) {
+      return res.status(200).json({ reply: replyText.trim() });
+    }
+
+    const apiErr =
+      data?.errors?.[0]?.message ||
+      data?.error ||
+      `HTTP ${response.status}`;
+
+    return res.status(200).json({
+      reply: `Debug: ${apiErr}`,
+    });
+  } catch (err) {
+    return res.status(200).json({
+      reply: `Debug Catch: ${err?.message || "Unknown error"}`,
+    });
+  }
+};
