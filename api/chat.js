@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-If the user writes in Banglish and asks for pure Bengali, reply in clean natural Bengali. Complete every sentence cleanly without cutting off mid-word.
+Always complete every sentence cleanly with proper punctuation (like ।, ., ?, !). Never stop mid-word or mid-sentence.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -15,37 +15,84 @@ Formatting, Vision & Error Rules:
 `.trim();
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "e6c66fe73c44eca9e77db3de2cc6e6ad";
-const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const TEXT_MODEL = "@cf/qwen/qwen2.5-72b-instruct";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
-function extractBase64Image(attachment) {
-  if (!attachment || typeof attachment !== "object") return null;
+function looksIncomplete(text) {
+  if (!text || typeof text !== "string") return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 20) return false;
+  return !/[।.!?…"'”’)\]]$/.test(trimmed);
+}
 
-  const raw =
-    attachment.dataUrl ||
-    attachment.base64 ||
-    attachment.url ||
-    attachment.content ||
-    "";
+function extractImageInfo(attachment) {
+  if (!attachment) return null;
 
-  if (typeof raw !== "string" || !raw.trim()) return null;
-
-  const match = raw.match(/^data:image\/([a-zA-Z0-9.+-]+);base64,(.+)$/);
-  if (match) {
-    return {
-      mimeType: `image/${match[1].toLowerCase()}`,
-      base64: match[2].replace(/\s+/g, ""),
-    };
+  if (typeof attachment === "string") {
+    attachment = { dataUrl: attachment };
   }
 
-  const cleaned = raw.replace(/\s+/g, "");
-  if (/^[A-Za-z0-9+/=]+$/.test(cleaned) && cleaned.length > 100) {
-    return {
-      mimeType: attachment.type || "image/jpeg",
-      base64: cleaned,
-    };
+  if (typeof attachment !== "object") return null;
+
+  const candidates = [
+    attachment.dataUrl,
+    attachment.base64,
+    attachment.image,
+    attachment.preview,
+    attachment.url,
+    attachment.src,
+    attachment.content,
+  ];
+
+  for (const raw of candidates) {
+    if (typeof raw !== "string" || !raw.trim()) continue;
+
+    const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (match) {
+      const cleanBase64 = match[2].replace(/\s+/g, "");
+      if (cleanBase64.length > 50) {
+        return {
+          mimeType: match[1].toLowerCase(),
+          base64: cleanBase64,
+        };
+      }
+    }
+
+    const cleaned = raw.replace(/\s+/g, "");
+    if (/^[A-Za-z0-9+/=]+$/.test(cleaned) && cleaned.length > 100) {
+      return {
+        mimeType:
+          typeof attachment.type === "string" && attachment.type.startsWith("image/")
+            ? attachment.type
+            : "image/jpeg",
+        base64: cleaned,
+      };
+    }
   }
 
+  return null;
+}
+
+async function callCloudflareText(accountId, apiToken, messages, maxTokens = 4096) {
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messages,
+      max_tokens: maxTokens,
+      temperature: 0.55,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  const text = data?.result?.response;
+  if (response.ok && typeof text === "string" && text.trim()) {
+    return text.trim();
+  }
   return null;
 }
 
@@ -60,7 +107,7 @@ module.exports = async function handler(req, res) {
 
     if (!accountId || !apiToken) {
       return res.status(200).json({
-        reply: "Temporary issue",
+        reply: "সাময়িক সমস্যা",
       });
     }
 
@@ -68,21 +115,21 @@ module.exports = async function handler(req, res) {
     const { message = "", history = [], attachment = null } = body;
 
     const cleanMessage = typeof message === "string" ? message.trim() : "";
-    const parsedImage = extractBase64Image(attachment);
+    const imageInfo = extractImageInfo(attachment);
 
-    if (!cleanMessage && !parsedImage) {
+    if (!cleanMessage && !imageInfo) {
       return res.status(200).json({
-        reply: "Temporary issue",
+        reply: "সাময়িক সমস্যা",
       });
     }
 
-    if (parsedImage) {
+    if (imageInfo) {
       const visionEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${VISION_MODEL}`;
-      const imageBytes = Array.from(Buffer.from(parsedImage.base64, "base64"));
+      const imageBytes = Array.from(Buffer.from(imageInfo.base64, "base64"));
 
-      const userInstruction = cleanMessage
-        ? `User message: ${cleanMessage}\nReply directly in the same language as the user's message.`
-        : "Look closely at this image and describe what is shown or written clearly in natural Bengali (or matching any text language in the image).";
+      const promptText = cleanMessage
+        ? `${cleanMessage}\nRespond clearly in the user's language and complete every sentence.`
+        : "Look carefully at what is shown or written in this image and describe it clearly and completely in natural Bengali (or matching text in the image).";
 
       const visionRes = await fetch(visionEndpoint, {
         method: "POST",
@@ -91,9 +138,9 @@ module.exports = async function handler(req, res) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          prompt: userInstruction,
+          prompt: promptText,
           image: imageBytes,
-          max_tokens: 900,
+          max_tokens: 4096,
           temperature: 0.35,
         }),
       });
@@ -108,8 +155,13 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ reply: visionReply.trim() });
       }
 
+      const reason =
+        visionData?.errors?.[0]?.message ||
+        visionData?.error ||
+        `HTTP ${visionRes.status}`;
+
       return res.status(200).json({
-        reply: "Temporary issue",
+        reply: `ছবিটি বিশ্লেষণ করতে সাময়িক সমস্যা হচ্ছে (${reason})।`,
       });
     }
 
@@ -122,7 +174,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-12)
+          .slice(-8)
           .map((item) => ({
             role: item.role,
             content: item.content.trim(),
@@ -142,34 +194,35 @@ module.exports = async function handler(req, res) {
       { role: "user", content: userPrompt },
     ];
 
-    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+    let replyText = await callCloudflareText(accountId, apiToken, messages, 4096);
 
-    const response = await fetch(textEndpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        max_tokens: 1400,
-        temperature: 0.55,
-      }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const replyText = data?.result?.response;
-
-    if (response.ok && typeof replyText === "string" && replyText.trim()) {
-      return res.status(200).json({ reply: replyText.trim() });
+    if (!replyText) {
+      return res.status(200).json({
+        reply: "সাময়িক সমস্যা",
+      });
     }
 
-    return res.status(200).json({
-      reply: "Temporary issue",
-    });
+    if (looksIncomplete(replyText)) {
+      const tailContext = replyText.slice(-160);
+      const continuationMessages = [
+        ...messages,
+        { role: "assistant", content: replyText },
+        {
+          role: "user",
+          content: `Your previous reply stopped right after: "${tailContext}". Continue naturally from right there and finish the sentence and point cleanly without repeating what is already written.`,
+        },
+      ];
+      const extraPart = await callCloudflareText(accountId, apiToken, continuationMessages, 2048);
+      if (extraPart) {
+        const needsSpace = !/\s$/.test(replyText) && !/^[।.!?,\s]/.test(extraPart);
+        replyText = `${replyText}${needsSpace ? " " : ""}${extraPart.trim()}`;
+      }
+    }
+
+    return res.status(200).json({ reply: replyText.trim() });
   } catch (err) {
     return res.status(200).json({
-      reply: "Temporary issue",
+      reply: "সাময়িক সমস্যা",
     });
   }
 };
