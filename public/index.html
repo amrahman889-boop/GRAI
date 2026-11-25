@@ -222,6 +222,14 @@
       color: #111827;
       border-bottom-left-radius: 4px;
     }
+    .bubble-img {
+      display: block;
+      max-width: 220px;
+      max-height: 220px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      object-fit: cover;
+    }
 
     .composer {
       position: relative;
@@ -243,13 +251,31 @@
       color: #111827;
     }
     .attachment-pill.show { display: flex; }
+    .attachment-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .attachment-thumb {
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .attachment-label {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .remove-attach-btn {
       border: none;
       background: transparent;
       color: #dc2626;
       font-weight: 700;
       cursor: pointer;
-      font-size: 15px;
+      font-size: 16px;
       padding: 0 4px;
     }
     .plus-popover {
@@ -360,7 +386,10 @@
 
     <div class="composer">
       <div id="attachment-pill" class="attachment-pill">
-        <span id="attachment-name"></span>
+        <div class="attachment-left">
+          <img id="attachment-thumb" class="attachment-thumb" alt="Preview" style="display: none;" />
+          <span id="attachment-name" class="attachment-label"></span>
+        </div>
         <button id="remove-attach-btn" class="remove-attach-btn" type="button" aria-label="Remove attachment">×</button>
       </div>
 
@@ -408,7 +437,7 @@
   </div>
 
   <script>
-    const STORAGE_KEY = "grai_conversations_v5";
+    const STORAGE_KEY = "grai_conversations_gemini_v1";
 
     const menuBtn = document.getElementById("menu-btn");
     const newChatBtn = document.getElementById("new-chat-btn");
@@ -431,6 +460,7 @@
     const photosInput = document.getElementById("photos-input");
     const filesInput = document.getElementById("files-input");
     const attachmentPill = document.getElementById("attachment-pill");
+    const attachmentThumbEl = document.getElementById("attachment-thumb");
     const attachmentNameEl = document.getElementById("attachment-name");
     const removeAttachBtn = document.getElementById("remove-attach-btn");
 
@@ -518,23 +548,45 @@
       actionBackdropEl.classList.remove("open");
     }
 
-    function readImageAsDataUrl(file) {
+    function compressImageToDataUrl(file, maxDimension = 1024, quality = 0.8) {
       return new Promise((resolve) => {
         if (!file || !file.type.startsWith("image/")) {
           resolve(null);
           return;
         }
-        const reader = new FileReader();
-        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(file);
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        };
+        img.src = url;
       });
     }
 
     async function setAttachment(file, kind) {
       if (!file) return;
       const isImage = file.type && file.type.startsWith("image/");
-      const dataUrl = isImage ? await readImageAsDataUrl(file) : null;
+      const dataUrl = isImage ? await compressImageToDataUrl(file) : null;
 
       currentAttachment = {
         name: file.name,
@@ -542,6 +594,15 @@
         kind,
         dataUrl,
       };
+
+      if (dataUrl) {
+        attachmentThumbEl.src = dataUrl;
+        attachmentThumbEl.style.display = "block";
+      } else {
+        attachmentThumbEl.style.display = "none";
+        attachmentThumbEl.src = "";
+      }
+
       attachmentNameEl.textContent = `${kind}: ${file.name}`;
       attachmentPill.classList.add("show");
       plusPopover.classList.remove("open");
@@ -552,6 +613,8 @@
       cameraInput.value = "";
       photosInput.value = "";
       filesInput.value = "";
+      attachmentThumbEl.style.display = "none";
+      attachmentThumbEl.src = "";
       attachmentNameEl.textContent = "";
       attachmentPill.classList.remove("show");
     }
@@ -576,7 +639,6 @@
     filesInput.addEventListener("change", (e) => setAttachment(e.target.files?.[0], "File"));
     removeAttachBtn.addEventListener("click", clearAttachment);
 
-    /* Voice Input (Mic) */
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     let recognition = null;
     let isListening = false;
@@ -607,9 +669,7 @@
         isListening = false;
         micBtnEl.classList.remove("listening");
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          alert("মাইক্রোফোনের অনুমতি (permission) দেওয়া হয়নি। ব্রাউজার সেটিংস থেকে মাইক অন করুন।");
-        } else if (event.error === "no-speech") {
-          alert("কোনো কথা শোনা যায়নি, স্পষ্ট করে আবার বলুন।");
+          alert("Microphone permission is blocked. Please allow microphone access in browser settings.");
         }
       };
 
@@ -630,24 +690,20 @@
             stream.getTracks().forEach((t) => t.stop());
           }
         } catch {
-          alert("মাইক চালু করতে পারছি না—ব্রাউজারে মাইক্রোফোন পারমিশন দিন অথবা Chrome ব্রাউজারে খুলুন।");
+          alert("Please allow microphone access to use voice input.");
           return;
         }
 
         const existing = promptInputEl.value.trim();
-        recognition.lang = /[a-zA-Z]/.test(existing) && !/[\u0980-\u09FF]/.test(existing)
-          ? "en-US"
-          : "bn-BD";
+        recognition.lang = /[\u0980-\u09FF]/.test(existing) ? "bn-BD" : "en-US";
 
         try {
           recognition.start();
-        } catch {
-          alert("মাইক এই মুহূর্তে চালু করা যাচ্ছে না, একটু পর চেষ্টা করুন।");
-        }
+        } catch {}
       });
     } else {
       micBtnEl.addEventListener("click", () => {
-        alert("এই ব্রাউজারে ভয়েস ইনপুট সাপোর্ট করছে না। Chrome ব্রাউজার ব্যবহার করে দেখুন।");
+        alert("Voice input is not supported in this browser.");
       });
     }
 
@@ -768,7 +824,7 @@
       }
     }
 
-    function buildMessageElement(role, text) {
+    function buildMessageElement(role, msg) {
       const row = document.createElement("div");
       row.className = "msg-row " + role;
 
@@ -778,7 +834,23 @@
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.textContent = text;
+
+      if (typeof msg === "string") {
+        bubble.textContent = msg;
+      } else {
+        if (msg.imageUrl) {
+          const img = document.createElement("img");
+          img.src = msg.imageUrl;
+          img.alt = msg.fileName || "Attached image";
+          img.className = "bubble-img";
+          bubble.appendChild(img);
+        }
+        if (msg.text) {
+          const span = document.createElement("span");
+          span.textContent = msg.text;
+          bubble.appendChild(span);
+        }
+      }
 
       row.appendChild(label);
       row.appendChild(bubble);
@@ -791,11 +863,11 @@
 
       if (!active.messages || active.messages.length === 0) {
         chatAreaEl.appendChild(
-          buildMessageElement("assistant", "হ্যালো! আমি GRAI—কীভাবে সাহায্য করতে পারি?")
+          buildMessageElement("assistant", "Hello! How can I help you today?")
         );
       } else {
         for (const msg of active.messages) {
-          chatAreaEl.appendChild(buildMessageElement(msg.role, msg.content));
+          chatAreaEl.appendChild(buildMessageElement(msg.role, msg));
         }
       }
       chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
@@ -812,18 +884,27 @@
       if (!text && !currentAttachment) return;
 
       const active = getActiveSession();
-      const historyBeforeThisTurn = [...active.messages];
-      const attachmentSnapshot = currentAttachment ? { ...currentAttachment } : null;
+      const historyForApi = active.messages.map((m) => ({
+        role: m.role,
+        content: typeof m === "string" ? m : (m.text || m.fileName || ""),
+      }));
 
-      const displayUserText = attachmentSnapshot
-        ? (text ? `${text}\n[${attachmentSnapshot.kind}: ${attachmentSnapshot.name}]` : `[${attachmentSnapshot.kind}: ${attachmentSnapshot.name}]`)
-        : text;
+      const attachmentSnapshot = currentAttachment ? { ...currentAttachment } : null;
+      const isImage = Boolean(attachmentSnapshot && attachmentSnapshot.dataUrl);
+
+      const userMessageObj = {
+        role: "user",
+        text: text || (attachmentSnapshot && !isImage ? `[File: ${attachmentSnapshot.name}]` : ""),
+        imageUrl: isImage ? attachmentSnapshot.dataUrl : null,
+        fileName: attachmentSnapshot ? attachmentSnapshot.name : null,
+        content: text || (attachmentSnapshot ? `[${attachmentSnapshot.kind}: ${attachmentSnapshot.name}]` : ""),
+      };
 
       if (active.messages.length === 0 && active.title === "New Chat") {
         active.title = (text || attachmentSnapshot?.name || "New Chat").slice(0, 36);
       }
 
-      active.messages.push({ role: "user", content: displayUserText });
+      active.messages.push(userMessageObj);
       saveState();
       renderAll();
 
@@ -842,38 +923,35 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: text,
-            history: historyBeforeThisTurn,
+            history: historyForApi,
             attachment: attachmentSnapshot,
           }),
         });
 
-        const rawText = await res.text();
-        let data = {};
-        try {
-          data = rawText ? JSON.parse(rawText) : {};
-        } catch {
-          data = { error: rawText || "Invalid response from server." };
-        }
-
+        const data = await res.json().catch(() => ({}));
         typingEl.remove();
 
-        if (!res.ok) {
-          const errText = "Error: " + (data?.error || "Failed to get response.");
-          active.messages.push({ role: "assistant", content: errText });
-          saveState();
-          renderAll();
-          return;
-        }
+        const wantsEnglish = /[a-zA-Z]/.test(text) && !/[\u0980-\u09FF]/.test(text);
+        const replyText =
+          res.ok && data?.reply
+            ? data.reply
+            : (wantsEnglish ? "Temporary issue" : "সাময়িক সমস্যা");
 
-        const reply = data.reply || "No response received.";
-        active.messages.push({ role: "assistant", content: reply });
-        saveState();
-        renderAll();
-      } catch (err) {
-        typingEl.remove();
         active.messages.push({
           role: "assistant",
-          content: "Error: " + (err?.message || "Network or server error occurred."),
+          text: replyText,
+          content: replyText,
+        });
+        saveState();
+        renderAll();
+      } catch {
+        typingEl.remove();
+        const wantsEnglish = /[a-zA-Z]/.test(text) && !/[\u0980-\u09FF]/.test(text);
+        const errReply = wantsEnglish ? "Temporary issue" : "সাময়িক সমস্যা";
+        active.messages.push({
+          role: "assistant",
+          text: errReply,
+          content: errReply,
         });
         saveState();
         renderAll();
