@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-Give clear, complete answers without cutting off mid-sentence, and end helpful replies with one short, relevant follow-up question or suggestion when natural.
+Keep replies concise, clear, and well-structured so they never get cut off mid-sentence. Always finish your final sentence properly and end with at most one short follow-up question when helpful.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -10,7 +10,7 @@ Identity Rules:
 
 Formatting, Vision & Error Rules:
 - Do not wrap every word or phrase in ** asterisks. Use punctuation like (), [], "", and * naturally only when helpful.
-- You DO have image vision capability. When an image is attached, inspect what is actually in the image carefully and reply directly in the user's language (defaulting to clear natural language matching the user's prompt) without saying you cannot view images or giving unrelated long English text.
+- You DO have image vision capability. When an image is attached, inspect what is actually in the image carefully and reply directly in the user's language without saying you cannot view images.
 - If a technical issue occurs, simply say "Temporary issue" (or "সাময়িক সমস্যা" if the user writes in Bengali) without giving long excuses.
 `.trim();
 
@@ -18,32 +18,49 @@ const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "e6c66fe73c44eca9e77db3de2cc6
 const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
-function extractBase64Image(attachment) {
-  if (!attachment || typeof attachment !== "object") return null;
+function extractImageInfo(attachment) {
+  if (!attachment) return null;
 
-  const raw =
-    attachment.dataUrl ||
-    attachment.base64 ||
-    attachment.url ||
-    attachment.content ||
-    "";
-
-  if (typeof raw !== "string" || !raw.trim()) return null;
-
-  const match = raw.match(/^data:image\/([a-zA-Z0-9.+-]+);base64,(.+)$/);
-  if (match) {
-    return {
-      mimeType: `image/${match[1].toLowerCase()}`,
-      base64: match[2].replace(/\s+/g, ""),
-    };
+  if (typeof attachment === "string") {
+    attachment = { dataUrl: attachment };
   }
 
-  const cleaned = raw.replace(/\s+/g, "");
-  if (/^[A-Za-z0-9+/=]+$/.test(cleaned) && cleaned.length > 100) {
-    return {
-      mimeType: attachment.type || "image/jpeg",
-      base64: cleaned,
-    };
+  if (typeof attachment !== "object") return null;
+
+  const candidates = [
+    attachment.dataUrl,
+    attachment.base64,
+    attachment.image,
+    attachment.preview,
+    attachment.url,
+    attachment.src,
+    attachment.content,
+  ];
+
+  for (const raw of candidates) {
+    if (typeof raw !== "string" || !raw.trim()) continue;
+
+    const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (match) {
+      const cleanBase64 = match[2].replace(/\s+/g, "");
+      if (cleanBase64.length > 50) {
+        return {
+          mimeType: match[1].toLowerCase(),
+          base64: cleanBase64,
+        };
+      }
+    }
+
+    const cleaned = raw.replace(/\s+/g, "");
+    if (/^[A-Za-z0-9+/=]+$/.test(cleaned) && cleaned.length > 100) {
+      return {
+        mimeType:
+          typeof attachment.type === "string" && attachment.type.startsWith("image/")
+            ? attachment.type
+            : "image/jpeg",
+        base64: cleaned,
+      };
+    }
   }
 
   return null;
@@ -68,21 +85,21 @@ module.exports = async function handler(req, res) {
     const { message = "", history = [], attachment = null } = body;
 
     const cleanMessage = typeof message === "string" ? message.trim() : "";
-    const parsedImage = extractBase64Image(attachment);
+    const imageInfo = extractImageInfo(attachment);
 
-    if (!cleanMessage && !parsedImage) {
+    if (!cleanMessage && !imageInfo) {
       return res.status(200).json({
         reply: "সাময়িক সমস্যা",
       });
     }
 
-    if (parsedImage) {
+    if (imageInfo) {
       const visionEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${VISION_MODEL}`;
-      const imageBytes = Array.from(Buffer.from(parsedImage.base64, "base64"));
+      const imageBytes = Array.from(Buffer.from(imageInfo.base64, "base64"));
 
-      const userInstruction = cleanMessage
-        ? `User message: ${cleanMessage}\nReply directly in the same language as the user's message.`
-        : "Look closely at this image and describe what is shown or written clearly in natural Bengali (or matching any text language in the image). Keep it concise and accurate.";
+      const promptText = cleanMessage
+        ? `${cleanMessage} (Reply clearly in the user's language and complete your sentences.)`
+        : "Describe what is clearly visible or written in this image in natural Bengali (or matching text in the image). Keep it concise and complete.";
 
       const visionRes = await fetch(visionEndpoint, {
         method: "POST",
@@ -91,21 +108,7 @@ module.exports = async function handler(req, res) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are GRAI by GRL. You can see images clearly. Answer directly based on what is inside the image without saying you cannot view images.",
-            },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: userInstruction },
-                { type: "image_url", image_url: { url: `data:${parsedImage.mimeType};base64,${parsedImage.base64}` } },
-              ],
-            },
-          ],
-          prompt: `${userInstruction}`,
+          prompt: promptText,
           image: imageBytes,
           max_tokens: 900,
           temperature: 0.35,
@@ -122,8 +125,13 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ reply: visionReply.trim() });
       }
 
+      const reason =
+        visionData?.errors?.[0]?.message ||
+        visionData?.error ||
+        `HTTP ${visionRes.status}`;
+
       return res.status(200).json({
-        reply: "ছবিটি বিশ্লেষণ করতে সাময়িক সমস্যা হচ্ছে, অনুগ্রহ করে আরেকবার চেষ্টা করুন।",
+        reply: `ছবিটি বিশ্লেষণ করতে সাময়িক সমস্যা হচ্ছে (${reason})।`,
       });
     }
 
@@ -136,7 +144,7 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-12)
+          .slice(-10)
           .map((item) => ({
             role: item.role,
             content: item.content.trim(),
@@ -166,7 +174,7 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         messages,
-        max_tokens: 1400,
+        max_tokens: 2048,
         temperature: 0.55,
       }),
     });
