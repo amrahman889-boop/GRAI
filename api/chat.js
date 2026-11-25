@@ -1,7 +1,7 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
-Always complete every sentence cleanly with proper punctuation (।, ., ?, !). Do not stop mid-word or mid-sentence.
+If the user writes in Banglish and asks for pure Bengali, reply in clean natural Bengali. Complete every sentence cleanly without cutting off mid-word.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -15,34 +15,8 @@ Formatting, Vision & Error Rules:
 `.trim();
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "e6c66fe73c44eca9e77db3de2cc6e6ad";
-const TEXT_MODEL = "@cf/qwen/qwen2.5-72b-instruct";
+const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
-
-function looksIncomplete(text) {
-  if (!text || typeof text !== "string") return false;
-  const trimmed = text.trim();
-  if (trimmed.length < 20) return false;
-  return !/[।.!?…"'”’)\]]$/.test(trimmed);
-}
-
-function cleanCutEnding(text) {
-  if (!text || typeof text !== "string") return text;
-  const trimmed = text.trim();
-  if (!looksIncomplete(trimmed)) return trimmed;
-
-  const lastPunctIndex = Math.max(
-    trimmed.lastIndexOf("।"),
-    trimmed.lastIndexOf("."),
-    trimmed.lastIndexOf("?"),
-    trimmed.lastIndexOf("!")
-  );
-
-  if (lastPunctIndex > trimmed.length * 0.5) {
-    return trimmed.slice(0, lastPunctIndex + 1).trim();
-  }
-
-  return `${trimmed}।`;
-}
 
 function extractImageInfo(attachment) {
   if (!attachment) return null;
@@ -92,29 +66,6 @@ function extractImageInfo(attachment) {
   return null;
 }
 
-async function callCloudflareText(accountId, apiToken, messages, maxTokens = 4096) {
-  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.55,
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  const text = data?.result?.response;
-  if (response.ok && typeof text === "string" && text.trim()) {
-    return text.trim();
-  }
-  return null;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -126,7 +77,7 @@ module.exports = async function handler(req, res) {
 
     if (!accountId || !apiToken) {
       return res.status(200).json({
-        reply: "সাময়িক সমস্যা",
+        reply: "Temporary issue",
       });
     }
 
@@ -138,7 +89,7 @@ module.exports = async function handler(req, res) {
 
     if (!cleanMessage && !imageInfo) {
       return res.status(200).json({
-        reply: "সাময়িক সমস্যা",
+        reply: "Temporary issue",
       });
     }
 
@@ -147,8 +98,8 @@ module.exports = async function handler(req, res) {
       const imageBytes = Array.from(Buffer.from(imageInfo.base64, "base64"));
 
       const promptText = cleanMessage
-        ? `${cleanMessage}\nRespond clearly in the user's language and complete every sentence.`
-        : "Look carefully at what is shown or written in this image and describe it clearly and completely in natural Bengali (or matching text in the image).";
+        ? `${cleanMessage}\nRespond clearly in the user's language.`
+        : "Look carefully at what is shown or written in this image and describe it clearly in natural Bengali (or matching text in the image).";
 
       const visionRes = await fetch(visionEndpoint, {
         method: "POST",
@@ -159,7 +110,7 @@ module.exports = async function handler(req, res) {
         body: JSON.stringify({
           prompt: promptText,
           image: imageBytes,
-          max_tokens: 4096,
+          max_tokens: 1024,
           temperature: 0.35,
         }),
       });
@@ -174,13 +125,8 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ reply: visionReply.trim() });
       }
 
-      const reason =
-        visionData?.errors?.[0]?.message ||
-        visionData?.error ||
-        `HTTP ${visionRes.status}`;
-
       return res.status(200).json({
-        reply: `ছবিটি বিশ্লেষণ করতে সাময়িক সমস্যা হচ্ছে (${reason})।`,
+        reply: "Temporary issue",
       });
     }
 
@@ -213,36 +159,34 @@ module.exports = async function handler(req, res) {
       { role: "user", content: userPrompt },
     ];
 
-    let replyText = await callCloudflareText(accountId, apiToken, messages, 4096);
+    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
 
-    if (!replyText) {
-      return res.status(200).json({
-        reply: "সাময়িক সমস্যা",
-      });
+    const response = await fetch(textEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        max_tokens: 1500,
+        temperature: 0.55,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const replyText = data?.result?.response;
+
+    if (response.ok && typeof replyText === "string" && replyText.trim()) {
+      return res.status(200).json({ reply: replyText.trim() });
     }
 
-    if (looksIncomplete(replyText)) {
-      const tailContext = replyText.slice(-160);
-      const continuationMessages = [
-        ...messages,
-        { role: "assistant", content: replyText },
-        {
-          role: "user",
-          content: `Your previous reply stopped right after: "${tailContext}". Continue naturally from right there and finish the sentence and point cleanly without repeating what is already written.`,
-        },
-      ];
-      const extraPart = await callCloudflareText(accountId, apiToken, continuationMessages, 2048);
-      if (extraPart) {
-        const needsSpace = !/\s$/.test(replyText) && !/^[।.!?,\s]/.test(extraPart);
-        replyText = `${replyText}${needsSpace ? " " : ""}${extraPart.trim()}`;
-      }
-      replyText = cleanCutEnding(replyText);
-    }
-
-    return res.status(200).json({ reply: replyText.trim() });
+    return res.status(200).json({
+      reply: "Temporary issue",
+    });
   } catch (err) {
     return res.status(200).json({
-      reply: "সাময়িক সমস্যা",
+      reply: "Temporary issue",
     });
   }
 };
