@@ -2,6 +2,7 @@ const SYSTEM_PROMPT = `
 You are GRAI, a helpful, smart, warm, and natural AI assistant.
 Understand and reply in whatever language the user writes in across world languages (such as Bengali, Banglish, English, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), keeping spelling clean and natural without forcing only Bengali or English.
 If the user writes in Banglish and asks for pure Bengali, reply in clean natural Bengali. Complete every sentence cleanly with proper punctuation (।, ., ?, !) without cutting off mid-word.
+When web search results are provided in context, prioritize accurate, up-to-date facts from those results and do not invent unverified details.
 
 Identity Rules:
 - When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
@@ -14,15 +15,96 @@ Formatting, Vision & Error Rules:
 - If a technical issue occurs, simply say "Temporary issue" (or "সাময়িক সমস্যা" if the user writes in Bengali) without giving long excuses.
 `.trim();
 
-const CF_ACCOUNT_ID = "5d17dd64f2a0e4001e1f608ac4f6676d";
+const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "5d17dd64f2a0e4001e1f608ac4f6676d";
 const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
 
-function looksIncomplete(text) {
-  if (!text || typeof text !== "string") return false;
-  const trimmed = text.trim();
-  if (trimmed.length < 25) return false;
-  return !/[।.!?…"'”’)\]]$/.test(trimmed);
+function decodeHtmlEntities(str = "") {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function shouldSearchWeb(query = "") {
+  const q = query.toLowerCase().trim();
+  if (!q || q.length < 3) return false;
+
+  const greetingOnly = /^(hi|hello|hey|salam|assalamu alaikum|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|hmm)\b/i;
+  if (greetingOnly.test(q) && q.split(/\s+/).length <= 4) {
+    return false;
+  }
+
+  return true;
+}
+
+async function searchDuckDuckGo(query) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    if (!res.ok) return [];
+
+    const html = await res.text();
+    const results = [];
+
+    const titleRegex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+    const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>|<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
+
+    const titles = [];
+    let tMatch;
+    while ((tMatch = titleRegex.exec(html)) !== null && titles.length < 6) {
+      let rawUrl = decodeHtmlEntities(tMatch[1] || "");
+      const uddgMatch = rawUrl.match(/[?&]uddg=([^&]+)/);
+      if (uddgMatch) {
+        try {
+          rawUrl = decodeURIComponent(uddgMatch[1]);
+        } catch (_) {}
+      }
+      titles.push({
+        title: decodeHtmlEntities(tMatch[2] || ""),
+        url: rawUrl,
+      });
+    }
+
+    const snippets = [];
+    let sMatch;
+    while ((sMatch = snippetRegex.exec(html)) !== null && snippets.length < 6) {
+      snippets.push(decodeHtmlEntities(sMatch[1] || sMatch[2] || ""));
+    }
+
+    for (let i = 0; i < titles.length; i++) {
+      if (titles[i].title || snippets[i]) {
+        results.push({
+          title: titles[i].title || "Result",
+          url: titles[i].url || "",
+          snippet: snippets[i] || "",
+        });
+      }
+    }
+
+    return results.slice(0, 5);
+  } catch (_) {
+    return [];
+  }
 }
 
 function extractBase64Image(attachment) {
@@ -31,7 +113,10 @@ function extractBase64Image(attachment) {
   const raw =
     attachment.dataUrl ||
     attachment.base64 ||
+    attachment.image ||
+    attachment.preview ||
     attachment.url ||
+    attachment.src ||
     attachment.content ||
     "";
 
@@ -56,37 +141,14 @@ function extractBase64Image(attachment) {
   return null;
 }
 
-async function runTextModel(accountId, apiToken, messages, maxTokens = 1600) {
-  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messages,
-      max_tokens: maxTokens,
-      temperature: 0.55,
-    }),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  const text = data?.result?.response;
-  if (response.ok && typeof text === "string" && text.trim()) {
-    return text.trim();
-  }
-  return null;
-}
-
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    const apiToken = (process.env.GEMINI_API_KEY || process.env.CF_API_TOKEN || "").trim();
-    const accountId = CF_ACCOUNT_ID.trim();
+    const apiToken = (process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY || "").trim();
+    const accountId = (CF_ACCOUNT_ID || "").trim();
 
     if (!accountId || !apiToken) {
       return res.status(200).json({
@@ -159,11 +221,30 @@ module.exports = async function handler(req, res) {
           }))
       : [];
 
+    let searchContext = "";
+    if (shouldSearchWeb(cleanMessage)) {
+      const searchResults = await searchDuckDuckGo(cleanMessage);
+      if (searchResults.length > 0) {
+        const formattedResults = searchResults
+          .map(
+            (r, idx) =>
+              `${idx + 1}. ${r.title}\nSnippet: ${r.snippet}${r.url ? `\nSource: ${r.url}` : ""}`
+          )
+          .join("\n\n");
+
+        searchContext = `\n\n[Live Web Search Results for "${cleanMessage}"]\n${formattedResults}\n[End of Search Results]`;
+      }
+    }
+
     let userPrompt = cleanMessage;
     if (attachment && attachment.name) {
       userPrompt = cleanMessage
         ? `${cleanMessage}\n\n[Attached file: ${attachment.name}]`
         : `[Attached file: ${attachment.name}] Please help me with this.`;
+    }
+
+    if (searchContext) {
+      userPrompt = `${userPrompt}${searchContext}\n\nUse the web search results above to give a clear, accurate, and complete answer in the user's language.`;
     }
 
     const messages = [
@@ -172,32 +253,31 @@ module.exports = async function handler(req, res) {
       { role: "user", content: userPrompt },
     ];
 
-    let replyText = await runTextModel(accountId, apiToken, messages, 1600);
+    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
 
-    if (!replyText) {
-      return res.status(200).json({
-        reply: "সাময়িক সমস্যা",
-      });
+    const response = await fetch(textEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        max_tokens: 1500,
+        temperature: 0.45,
+      }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const replyText = data?.result?.response;
+
+    if (response.ok && typeof replyText === "string" && replyText.trim()) {
+      return res.status(200).json({ reply: replyText.trim() });
     }
 
-    if (looksIncomplete(replyText)) {
-      const tail = replyText.slice(-140);
-      const continueMessages = [
-        ...messages,
-        { role: "assistant", content: replyText },
-        {
-          role: "user",
-          content: `Your reply stopped right after "${tail}". Continue directly from there and finish the final sentence cleanly without repeating anything.`,
-        },
-      ];
-      const extra = await runTextModel(accountId, apiToken, continueMessages, 800);
-      if (extra) {
-        const needsSpace = !/\s$/.test(replyText) && !/^[।.!?,\s]/.test(extra);
-        replyText = `${replyText}${needsSpace ? " " : ""}${extra}`;
-      }
-    }
-
-    return res.status(200).json({ reply: replyText.trim() });
+    return res.status(200).json({
+      reply: "সাময়িক সমস্যা",
+    });
   } catch (err) {
     return res.status(200).json({
       reply: "সাময়িক সমস্যা",
