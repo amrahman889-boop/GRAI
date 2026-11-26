@@ -1,21 +1,17 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a smart, helpful, natural, and conversational AI assistant under GRL.
-Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or explicitly asks for another language, in which case reply naturally in that language.
-Keep replies concise, clear, and natural—say only what is needed without over-explaining or sounding robotic.
-At the end of most helpful replies, naturally add a short relevant question or a brief offer like "Would you like me to do that for you?" (or "চাইলে আমি এটি করে দিতে পারি।" when replying in Bengali) when appropriate, without forcing it on every single message.
-Do NOT mention current date or time unless the user explicitly asks for date, time, day, or today's info.
-Strictly follow these search rules:
-- When verified web search results are provided, use only facts found in those results.
-- Never guess, fabricate, or invent dates, schedules, names, or events when search results do not confirm them.
-- If the user asks for live/current/specific facts (like events, news, prices, current office officials, etc.) and no verified search results are provided, state plainly in the user's language that live verified information could not be found right now.
+You are GRAI, a smart, accurate, and helpful AI assistant under GRL.
+Your default and system language is English. Reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
+When live web search results are provided, carefully read the full details and synthesize a well-structured, accurate, and helpful answer (using clean bullet points when listing dates, venues, schedules, or contacts).
+Never invent or guess facts that are not supported by the search results. If verified details (like a specific officer's current name) are not confirmed in the search results, clearly state what IS confirmed (e.g., jurisdiction, address, official phone numbers) and note honestly that the specific name could not be confirmed from current sources.
+End helpful responses naturally with a brief, relevant follow-up question to keep the conversation helpful.
 
 Identity & Formatting Rules:
-- Name: GRAI; under GRL. Mention GRL/GRAI naturally when asked who you are or who made you, without giving full forms unless asked.
+- Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
 - Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
 - Never mention Flint, Recursive, or any other company.
-- Do not wrap every word or phrase in ** asterisks.
+- Do not wrap every word or phrase in ** asterisks; use bolding only selectively for key labels or dates.
 - You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
-- If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) without long excuses.
+- If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "5d17dd64f2a0e4001e1f608ac4f6676d";
@@ -29,35 +25,30 @@ function getFallbackErrorText(text = "") {
 function getCurrentTimeInfo() {
   try {
     const now = new Date();
-    const dhakaStr = new Intl.DateTimeFormat("en-US", {
-      timeZone: "Asia/Dhaka",
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    }).format(now);
-    return `${dhakaStr} (Asia/Dhaka)`;
+    return (
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Dhaka",
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(now) + " (Asia/Dhaka)"
+    );
   } catch (_) {
     return new Date().toISOString();
   }
 }
 
-function needsDateOrTime(query = "") {
-  return /(date|time|today|day|month|year|tarikh|somoy|ajke|aj|কত তারিখ|কয়টা বাজে|আজকে|আজ|বার কি|সময়)/i.test(
-    query
-  );
-}
-
 function isNonSearchChat(query = "") {
   const q = query.trim().toLowerCase();
-  if (!q || q.length < 2) return true;
+  if (!q || q.length < 3) return true;
 
   const patterns = [
     /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
-    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ওয়েবসাইট সার্চ করতে পারো|ওয়েবসাইটের ভিতর যেতে পারো|salam dibi|elder sister)/i,
+    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ওয়েবসাইট সার্চ করতে পারো|ওয়েবসাইটের ভিতর যেতে পারো)/i,
   ];
 
   return patterns.some((p) => p.test(q));
@@ -68,12 +59,54 @@ function shouldSearchWeb(query = "") {
   const q = query.trim();
   if (q.length < 4) return false;
 
-  return /(search|news|latest|current|update|price|score|schedule|event|fair|mela|office|department|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|কে|কারা|কী|কি)/i.test(
+  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|কে|কারা|কী|কি)/i.test(
     q
   );
 }
 
-async function searchWithTavily(query, apiKey) {
+async function generateSearchQueries(userMessage, cfToken, accountId) {
+  try {
+    const todayStr = getCurrentTimeInfo();
+    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
+
+    const res = await fetch(textEndpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "system",
+            content:
+              "You generate optimal web search queries. Given a user question and current date, output ONLY a JSON array of 2 concise search queries: the FIRST query MUST be clean, natural English (e.g., 'Bangladesh Cyber Laws'), and the SECOND query in the user's original language if non-English (or another clean English query). Output ONLY valid JSON array, nothing else.",
+          },
+          {
+            role: "user",
+            content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
+          },
+        ],
+        max_tokens: 120,
+        temperature: 0.1,
+      }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    const raw = data?.result?.response || "";
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((q) => String(q).trim()).filter(Boolean).slice(0, 2);
+      }
+    }
+  } catch (_) {}
+
+  return [userMessage];
+}
+
+async function runSingleTavilySearch(query, apiKey) {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);
@@ -86,9 +119,10 @@ async function searchWithTavily(query, apiKey) {
       body: JSON.stringify({
         api_key: apiKey,
         query,
-        search_depth: "basic",
-        max_results: 5,
+        search_depth: "advanced",
+        max_results: 4,
         include_answer: true,
+        include_raw_content: false,
       }),
       signal: controller.signal,
     });
@@ -100,7 +134,6 @@ async function searchWithTavily(query, apiKey) {
     const results = Array.isArray(data.results)
       ? data.results
           .filter((item) => item && (item.title || item.content))
-          .slice(0, 5)
           .map((item) => ({
             title: String(item.title || "").trim(),
             url: String(item.url || "").trim(),
@@ -115,6 +148,35 @@ async function searchWithTavily(query, apiKey) {
   } catch (_) {
     return { answer: "", results: [] };
   }
+}
+
+async function performDeepSearch(userMessage, cfToken, accountId, tavilyKey) {
+  const queries = await generateSearchQueries(userMessage, cfToken, accountId);
+  const searchOutputs = await Promise.all(
+    queries.map((q) => runSingleTavilySearch(q, tavilyKey))
+  );
+
+  const answers = [];
+  const allResults = [];
+  const seenUrls = new Set();
+
+  for (const out of searchOutputs) {
+    if (out.answer) answers.push(out.answer);
+    for (const r of out.results) {
+      const key = r.url || r.title;
+      if (!seenUrls.has(key)) {
+        seenUrls.add(key);
+        allResults.push(r);
+      }
+    }
+  }
+
+  return {
+    queries,
+    displayQuery: queries[0] || userMessage,
+    summary: answers.join(" | "),
+    results: allResults.slice(0, 6),
+  };
 }
 
 function extractBase64Image(attachment) {
@@ -197,7 +259,7 @@ module.exports = async function handler(req, res) {
           prompt: userInstruction,
           image: imageBytes,
           max_tokens: 900,
-          temperature: 0.35,
+          temperature: 0.3,
         }),
       });
 
@@ -230,30 +292,34 @@ module.exports = async function handler(req, res) {
           }))
       : [];
 
-    let searchData = { answer: "", results: [] };
+    let searchResultsCount = 0;
+    let displaySearchQuery = "";
     let searchContext = "";
 
     if (shouldSearchWeb(cleanMessage)) {
       if (tavilyKey) {
-        searchData = await searchWithTavily(cleanMessage, tavilyKey);
-        if (searchData.results.length > 0 || searchData.answer) {
-          const formattedItems = searchData.results
+        const deepSearch = await performDeepSearch(cleanMessage, cfToken, accountId, tavilyKey);
+        searchResultsCount = deepSearch.results.length;
+        displaySearchQuery = deepSearch.displayQuery || cleanMessage;
+
+        if (deepSearch.results.length > 0 || deepSearch.summary) {
+          const formattedItems = deepSearch.results
             .map(
               (r, idx) =>
                 `${idx + 1}. ${r.title}\nDetails: ${r.snippet}${r.url ? `\nSource: ${r.url}` : ""}`
             )
             .join("\n\n");
 
-          searchContext = `\n\n[Verified Web Search Results]\n${
-            searchData.answer ? `Summary: ${searchData.answer}\n\n` : ""
-          }${formattedItems}\n[End Verified Web Search Results]`;
+          searchContext = `\n\n[Verified Live Web Search Results (Queries: ${deepSearch.queries.join(", ")})]\n${
+            deepSearch.summary ? `Key Summary: ${deepSearch.summary}\n\n` : ""
+          }${formattedItems}\n[End Web Search Results]`;
         } else {
           searchContext =
-            "\n\n[Web Search Status: No verified search results found for this query. Do not guess or fabricate facts.]";
+            "\n\n[Web Search Status: No verified search results returned. Do not guess or invent facts.]";
         }
       } else {
         searchContext =
-          "\n\n[Web Search Status: Search API key is not configured yet. Do not guess or fabricate live facts.]";
+          "\n\n[Web Search Status: TAVILY_API_KEY is missing in environment variables. Do not guess live facts.]";
       }
     }
 
@@ -264,9 +330,8 @@ module.exports = async function handler(req, res) {
         : `[Attached file: ${attachment.name}]`;
     }
 
-    if (needsDateOrTime(cleanMessage)) {
-      userPrompt = `[Current Date & Time: ${getCurrentTimeInfo()}]\n\n${userPrompt}`;
-    }
+    const todayStr = getCurrentTimeInfo();
+    userPrompt = `[Context Reference - Today's Date: ${todayStr} (Do not state this date unless relevant to the user's question)]\n\nUser Question: ${userPrompt}`;
 
     if (searchContext) {
       userPrompt = `${userPrompt}${searchContext}`;
@@ -288,8 +353,8 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         messages,
-        max_tokens: 1200,
-        temperature: 0.35,
+        max_tokens: 1300,
+        temperature: 0.25,
       }),
     });
 
@@ -299,7 +364,8 @@ module.exports = async function handler(req, res) {
     if (response.ok && typeof replyText === "string" && replyText.trim()) {
       return res.status(200).json({
         reply: replyText.trim(),
-        searched: searchData.results.length > 0,
+        searched: searchResultsCount > 0,
+        searchQuery: displaySearchQuery,
       });
     }
 
