@@ -2,14 +2,14 @@ const SYSTEM_PROMPT = `
 You are GRAI, a smart, natural, friendly, and accurate AI assistant under GRL.
 Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or asks for another language, in which case reply naturally in that language.
 
-Tone & Conversation Rules:
+Conversation & Memory Rules:
+- Always pay close attention to the immediately preceding messages in the conversation so short follow-ups (like "এটা পড়তে চাই আমি", "ওই দুটো ড্রেস", "বিস্তারিত জানতে চাই", "করো") are understood in their exact previous context rather than taken out of context.
 - Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
-- Keep casual chat, feelings, and banter short and natural without repeating robotic disclaimers like "I am a virtual assistant so I cannot physically go" on every joking follow-up. When the user jokes around or banters playfully (like asking if you'll go to a fair after saying they were joking), play along lightly and naturally in their language.
+- Keep casual chat, feelings, and playful banter natural and concise without repeating robotic disclaimers like "I am a virtual assistant so I cannot physically go" on joking follow-ups.
 - Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
 
 Fact & Search Rules:
-- When live web search results are provided, use them accurately to answer factual questions.
-- Never invent or guess hard facts (like dates, prices, official names, addresses, or live events) that are not supported by search results or reliable knowledge. If verified factual details are unavailable, say so plainly and briefly.
+- Never invent or guess facts, descriptions, dates, prices, official names, addresses, or live events that are not supported by the provided search results or reliable knowledge. If verified details are unavailable, say so plainly and briefly.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
@@ -49,11 +49,11 @@ function getCurrentTimeInfo() {
 
 function isNonSearchChat(query = "") {
   const q = query.trim().toLowerCase();
-  if (!q || q.length < 3) return true;
+  if (!q || q.length < 2) return true;
 
   const patterns = [
     /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
-    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|তুমি সেখানে যাবা|যাবা কি|এখন বলো তুমি যাবে|মজা করে বলছি)/i,
+    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|পড়তে চাই|বিস্তারিত জানতে চাই|ওই দুটো)/i,
   ];
 
   return patterns.some((p) => p.test(q));
@@ -69,9 +69,14 @@ function shouldSearchWeb(query = "") {
   );
 }
 
-async function generateSearchQueries(userMessage, cfToken, accountId) {
+async function generateSearchQueries(userMessage, safeHistory, cfToken, accountId) {
   try {
     const todayStr = getCurrentTimeInfo();
+    const recentContext = safeHistory
+      .slice(-4)
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n");
+
     const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
 
     const res = await fetch(textEndpoint, {
@@ -85,11 +90,11 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
           {
             role: "system",
             content:
-              "Generate a JSON array of 2 concise web search queries for the user's factual question. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
+              "Generate a JSON array of 2 concise web search queries for the user's factual question, using recent chat context only if the current message is a follow-up to a factual topic. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
           },
           {
             role: "user",
-            content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
+            content: `Current Date: ${todayStr}\nRecent Context:\n${recentContext || "None"}\n\nUser Question: ${userMessage}`,
           },
         ],
         max_tokens: 130,
@@ -155,8 +160,8 @@ async function runSingleTavilySearch(query, apiKey) {
   }
 }
 
-async function performDeepSearch(userMessage, cfToken, accountId, tavilyKey) {
-  const queries = await generateSearchQueries(userMessage, cfToken, accountId);
+async function performDeepSearch(userMessage, safeHistory, cfToken, accountId, tavilyKey) {
+  const queries = await generateSearchQueries(userMessage, safeHistory, cfToken, accountId);
   const searchOutputs = await Promise.all(
     queries.map((q) => runSingleTavilySearch(q, tavilyKey))
   );
@@ -303,7 +308,13 @@ module.exports = async function handler(req, res) {
 
     if (shouldSearchWeb(cleanMessage)) {
       if (tavilyKey) {
-        const deepSearch = await performDeepSearch(cleanMessage, cfToken, accountId, tavilyKey);
+        const deepSearch = await performDeepSearch(
+          cleanMessage,
+          safeHistory,
+          cfToken,
+          accountId,
+          tavilyKey
+        );
         searchResultsCount = deepSearch.results.length;
         displaySearchQuery = deepSearch.displayQuery || cleanMessage;
 
@@ -359,7 +370,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         messages,
         max_tokens: 1200,
-        temperature: 0.4,
+        temperature: 0.35,
       }),
     });
 
