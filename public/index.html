@@ -910,12 +910,14 @@
 
     function likelyNeedsSearch(text = "") {
       const q = text.trim().toLowerCase();
-      if (q.length < 5) return false;
+      if (q.length < 4) return false;
 
-      const casualOrFeeling = /(কিরে|কি অবস্থা|কেমন আছ|ভালো লাগছে না|মন খারাপ|ভালো নেই|হাই|হ্যালো|সালাম|ধন্যবাদ|hi|hello|hey|salam|how are you|feeling down|not feeling well|thanks)/i;
+      // সাধারণ আড্ডা, অনুভূতি বা কুশল বিনিময়ে কখনোই সার্চ নয়
+      const casualOrFeeling = /(কিরে|কি অবস্থা|কেমন আছ|ভালো লাগছে না|মন খারাপ|ভালো নেই|হাই|হ্যালো|সালাম|ধন্যবাদ|আমি বাংলাদেশে থাকি|বাংলাদেশে থাকি|hi|hello|hey|salam|how are you|feeling down|not feeling well|i live in|thanks)/i;
       if (casualOrFeeling.test(q)) return false;
 
-      return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়)/i.test(
+      // শুধু স্পষ্ট তথ্য/খবর/তারিখ/নিয়ম/দাম/অফিস/থানা বা সার্চের অনুরোধে সার্চ
+      return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|সার্চ|খবর|তথ্য|মেলা|দপ্তর|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কবে|কখন|কোথায়)/i.test(
         q
       );
     }
@@ -1029,7 +1031,7 @@
 
         const data = await res.json().catch(() => ({}));
 
-        if (data && data.searched && data.searchQuery) {
+        if (isSearchPrompt && data && data.searched && data.searchQuery) {
           const statusBox = typingEl.querySelector(".grai-status-box");
           if (statusBox) {
             statusBox.innerHTML = `
