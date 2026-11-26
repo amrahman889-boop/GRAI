@@ -4,6 +4,7 @@ Your default and system language is English. Always default to clear, natural En
 
 Conversation & Memory Rules:
 - Always pay close attention to the immediately preceding messages in the conversation so short follow-ups (like "এটা পড়তে চাই আমি", "ওই দুটো ড্রেস", "বিস্তারিত জানতে চাই", "করো") are understood in their exact previous context rather than taken out of context.
+- If the conversation just started with a short greeting or call like "ওই", "hey", or "hi", respond naturally and casually (e.g. "হ্যাঁ বলো, কী খবর?" or "Hey, what's up?") without talking about memory, chat history, or just starting a conversation.
 - Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
 - Keep casual chat, feelings, and playful banter natural and concise without repeating robotic disclaimers like "I am a virtual assistant so I cannot physically go" on joking follow-ups.
 - Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
@@ -49,11 +50,11 @@ function getCurrentTimeInfo() {
 
 function isNonSearchChat(query = "") {
   const q = query.trim().toLowerCase();
-  if (!q || q.length < 2) return true;
+  if (!q || q.length < 3) return true;
 
   const patterns = [
-    /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
-    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|পড়তে চাই|বিস্তারিত জানতে চাই|ওই দুটো)/i,
+    /^(hi|hello|hey|oi|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|ওই|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
+    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|চলো ফান করি|জোকস|পড়তে চাই|বিস্তারিত জানতে চাই|ওই দুটো)/i,
   ];
 
   return patterns.some((p) => p.test(q));
