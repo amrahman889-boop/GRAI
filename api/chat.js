@@ -1,20 +1,21 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a professional, accurate, and helpful AI assistant under GRL.
-Your default and system language is English. Always reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
-Keep responses concise, accurate, and natural—never over-explain or sound robotic.
+You are GRAI, a smart, natural, friendly, and accurate AI assistant under GRL.
+Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or asks for another language, in which case reply naturally in that language.
 
-Strict Accuracy & Search Rules:
-- Rely ONLY on facts clearly present in the provided search results or well-established verified knowledge.
-- Do NOT confuse regional/branch offices with a headquarters/main office unless explicitly supported as the main office in the search results.
-- When multiple names or older appointments appear in search results for a current official role, mention clearly what the search results indicate without fabricating certainty, and provide official contact details if found in the search results.
-- Never guess or invent addresses, phone numbers, dates, or names not found in the search results.
-- Ask natural, practical follow-up questions relevant to the topic (such as offering to look up contact details or official links), and NEVER ask unnatural questions like whether the user is involved in special work with an office or police station.
+Tone & Conversation Rules:
+- Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
+- Keep casual chat, feelings, and banter short and natural without repeating robotic disclaimers like "I am a virtual assistant so I cannot physically go" on every joking follow-up. When the user jokes around or banters playfully (like asking if you'll go to a fair after saying they were joking), play along lightly and naturally in their language.
+- Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
+
+Fact & Search Rules:
+- When live web search results are provided, use them accurately to answer factual questions.
+- Never invent or guess hard facts (like dates, prices, official names, addresses, or live events) that are not supported by search results or reliable knowledge. If verified factual details are unavailable, say so plainly and briefly.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
 - Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
 - Never mention Flint, Recursive, or any other company.
-- Do not wrap every word or phrase in ** asterisks; use clean structure and selective bolding only when helpful.
+- Do not wrap every word or phrase in ** asterisks; use bolding only selectively when helpful.
 - You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
 - If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
@@ -29,7 +30,6 @@ function getFallbackErrorText(text = "") {
 
 function getCurrentTimeInfo() {
   try {
-    const now = new Date();
     return (
       new Intl.DateTimeFormat("en-US", {
         timeZone: "Asia/Dhaka",
@@ -40,7 +40,7 @@ function getCurrentTimeInfo() {
         hour: "2-digit",
         minute: "2-digit",
         hour12: true,
-      }).format(now) + " (Asia/Dhaka)"
+      }).format(new Date()) + " (Asia/Dhaka)"
     );
   } catch (_) {
     return new Date().toISOString();
@@ -53,8 +53,7 @@ function isNonSearchChat(query = "") {
 
   const patterns = [
     /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
-    /^(হ্যাঁ|হ্যা|না|ঠিক আছে|ওকে|yes|no)$/i,
-    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ওয়েবসাইট সার্চ করতে পারো|ওয়েবসাইটের ভিতর যেতে পারো)/i,
+    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|তুমি সেখানে যাবা|যাবা কি|এখন বলো তুমি যাবে|মজা করে বলছি)/i,
   ];
 
   return patterns.some((p) => p.test(q));
@@ -65,7 +64,7 @@ function shouldSearchWeb(query = "") {
   const q = query.trim();
   if (q.length < 4) return false;
 
-  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|headquarters|main office|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কে|কারা|কী|কি)/i.test(
+  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়)/i.test(
     q
   );
 }
@@ -86,14 +85,14 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
           {
             role: "system",
             content:
-              "Generate a JSON array of 2 concise, high-accuracy web search queries for the user's current question. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant, e.g., head office/address or current OC/contact). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
+              "Generate a JSON array of 2 concise web search queries for the user's factual question. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
           },
           {
             role: "user",
             content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
           },
         ],
-        max_tokens: 140,
+        max_tokens: 130,
         temperature: 0.1,
       }),
     });
@@ -265,7 +264,7 @@ module.exports = async function handler(req, res) {
           prompt: userInstruction,
           image: imageBytes,
           max_tokens: 900,
-          temperature: 0.3,
+          temperature: 0.35,
         }),
       });
 
@@ -359,8 +358,8 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         messages,
-        max_tokens: 1300,
-        temperature: 0.2,
+        max_tokens: 1200,
+        temperature: 0.4,
       }),
     });
 
