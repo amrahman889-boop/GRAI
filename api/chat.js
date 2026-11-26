@@ -1,24 +1,30 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a helpful, smart, warm, and natural AI assistant.
-Your default and primary language is English. When the user writes in English, reply in clear, natural English. When the user writes in another language across world languages (such as Bengali, Banglish, Hindi, Urdu, Arabic, Spanish, French, Japanese, Korean, German, etc.), reply naturally in that language. If the user writes in Banglish and explicitly asks for pure Bengali, reply in clean natural Bengali.
-Always complete every sentence cleanly with proper punctuation (., !, ?, ।) without cutting off mid-word or mid-sentence.
-When current date/time or web search results are provided in context, use them accurately and prioritize verified facts from the search results without inventing details.
+You are GRAI, a smart, helpful, natural, and conversational AI assistant under GRL.
+Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or explicitly asks for another language, in which case reply naturally in that language.
+Keep replies concise, clear, and natural—say only what is needed without over-explaining or sounding robotic.
+At the end of most helpful replies, naturally add a short relevant question or a brief offer like "Would you like me to do that for you?" (or "চাইলে আমি এটি করে দিতে পারি।" when replying in Bengali) when appropriate, without forcing it on every single message.
+Do NOT mention current date or time unless the user explicitly asks for date, time, day, or today's info.
+Strictly follow these search rules:
+- When verified web search results are provided, use only facts found in those results.
+- Never guess, fabricate, or invent dates, schedules, names, or events when search results do not confirm them.
+- If the user asks for live/current/specific facts (like events, news, prices, current office officials, etc.) and no verified search results are provided, state plainly in the user's language that live verified information could not be found right now.
 
-Identity Rules:
-- Your name is GRAI, created/developed under GRL.
-- When asked who you are or who made/developed you, answer naturally using GRAI and GRL without giving full forms unless asked.
-- Only when asked what GRAI or GRL means or stands for, explain naturally that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
-- Never mention Flint, Recursive, or any other creator/company.
-
-Formatting, Vision & Error Rules:
-- Do not wrap every word or phrase in ** asterisks. Use punctuation like (), [], "", and * naturally only when helpful.
-- You DO have image vision capability. When an image is attached, inspect what is actually in the image carefully and reply directly in the user's language without saying you cannot view images.
-- If a technical issue occurs, simply say "Temporary issue" (or "সাময়িক সমস্যা" if the user writes in Bengali) without giving long excuses.
+Identity & Formatting Rules:
+- Name: GRAI; under GRL. Mention GRL/GRAI naturally when asked who you are or who made you, without giving full forms unless asked.
+- Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
+- Never mention Flint, Recursive, or any other company.
+- Do not wrap every word or phrase in ** asterisks.
+- You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
+- If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) without long excuses.
 `.trim();
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "5d17dd64f2a0e4001e1f608ac4f6676d";
 const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
+
+function getFallbackErrorText(text = "") {
+  return /[\u0980-\u09FF]/.test(text) ? "সাময়িক সমস্যা" : "Temporary issue";
+}
 
 function getCurrentTimeInfo() {
   try {
@@ -33,191 +39,82 @@ function getCurrentTimeInfo() {
       minute: "2-digit",
       hour12: true,
     }).format(now);
-    return `${dhakaStr} (Asia/Dhaka) | UTC: ${now.toISOString()}`;
+    return `${dhakaStr} (Asia/Dhaka)`;
   } catch (_) {
     return new Date().toISOString();
   }
 }
 
-function decodeHtmlEntities(str = "") {
-  return str
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function needsDateOrTime(query = "") {
+  return /(date|time|today|day|month|year|tarikh|somoy|ajke|aj|কত তারিখ|কয়টা বাজে|আজকে|আজ|বার কি|সময়)/i.test(
+    query
+  );
+}
+
+function isNonSearchChat(query = "") {
+  const q = query.trim().toLowerCase();
+  if (!q || q.length < 2) return true;
+
+  const patterns = [
+    /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
+    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ওয়েবসাইট সার্চ করতে পারো|ওয়েবসাইটের ভিতর যেতে পারো|salam dibi|elder sister)/i,
+  ];
+
+  return patterns.some((p) => p.test(q));
 }
 
 function shouldSearchWeb(query = "") {
-  const q = query.toLowerCase().trim();
-  if (!q || q.length < 2) return false;
+  if (isNonSearchChat(query)) return false;
+  const q = query.trim();
+  if (q.length < 4) return false;
 
-  const greetingOnly = /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|ধন্যবাদ)\b/i;
-  if (greetingOnly.test(q) && q.split(/\s+/).length <= 4) {
-    return false;
-  }
-
-  return true;
+  return /(search|news|latest|current|update|price|score|schedule|event|fair|mela|office|department|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|কে|কারা|কী|কি)/i.test(
+    q
+  );
 }
 
-async function searchDuckDuckGoInstant(query) {
+async function searchWithTavily(query, apiKey) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4500);
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
-    const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "User-Agent": "GRAI-WebSearch/2.0" },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    if (!res.ok) return [];
-
-    const data = await res.json().catch(() => ({}));
-    const results = [];
-
-    if (data.AbstractText) {
-      results.push({
-        title: data.Heading || query,
-        url: data.AbstractURL || "",
-        snippet: data.AbstractText,
-      });
-    }
-
-    if (Array.isArray(data.RelatedTopics)) {
-      for (const item of data.RelatedTopics) {
-        if (results.length >= 4) break;
-        if (item && item.Text) {
-          results.push({
-            title: item.Text.slice(0, 85),
-            url: item.FirstURL || "",
-            snippet: item.Text,
-          });
-        }
-      }
-    }
-
-    return results;
-  } catch (_) {
-    return [];
-  }
-}
-
-async function searchDuckDuckGoHtml(query) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
-    const res = await fetch(url, {
-      method: "GET",
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "en-US,en;q=0.9,bn;q=0.8",
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        search_depth: "basic",
+        max_results: 5,
+        include_answer: true,
+      }),
       signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const results = [];
-
-    const titleRegex = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
-    const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>|<div[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
-
-    const titles = [];
-    let tMatch;
-    while ((tMatch = titleRegex.exec(html)) !== null && titles.length < 6) {
-      let rawUrl = decodeHtmlEntities(tMatch[1] || "");
-      const uddgMatch = rawUrl.match(/[?&]uddg=([^&]+)/);
-      if (uddgMatch) {
-        try {
-          rawUrl = decodeURIComponent(uddgMatch[1]);
-        } catch (_) {}
-      }
-      titles.push({
-        title: decodeHtmlEntities(tMatch[2] || ""),
-        url: rawUrl,
-      });
-    }
-
-    const snippets = [];
-    let sMatch;
-    while ((sMatch = snippetRegex.exec(html)) !== null && snippets.length < 6) {
-      snippets.push(decodeHtmlEntities(sMatch[1] || sMatch[2] || ""));
-    }
-
-    for (let i = 0; i < titles.length; i++) {
-      if (titles[i].title || snippets[i]) {
-        results.push({
-          title: titles[i].title || "Result",
-          url: titles[i].url || "",
-          snippet: snippets[i] || "",
-        });
-      }
-    }
-
-    return results.slice(0, 5);
-  } catch (_) {
-    return [];
-  }
-}
-
-async function searchWikipediaFallback(query) {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=3&origin=*`;
-    const res = await fetch(url, {
-      method: "GET",
-      headers: { "User-Agent": "GRAI-WebSearch/2.0" },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-    if (!res.ok) return [];
+    if (!res.ok) return { answer: "", results: [] };
 
     const data = await res.json().catch(() => ({}));
-    const list = data?.query?.search || [];
-    return list.map((item) => ({
-      title: item.title || "Wikipedia",
-      url: item.title ? `https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, "_"))}` : "",
-      snippet: decodeHtmlEntities(item.snippet || ""),
-    }));
+    const results = Array.isArray(data.results)
+      ? data.results
+          .filter((item) => item && (item.title || item.content))
+          .slice(0, 5)
+          .map((item) => ({
+            title: String(item.title || "").trim(),
+            url: String(item.url || "").trim(),
+            snippet: String(item.content || "").trim(),
+          }))
+      : [];
+
+    return {
+      answer: typeof data.answer === "string" ? data.answer.trim() : "",
+      results,
+    };
   } catch (_) {
-    return [];
+    return { answer: "", results: [] };
   }
-}
-
-async function performWebSearch(query) {
-  const htmlResults = await searchDuckDuckGoHtml(query);
-  const instantResults = htmlResults.length < 3 ? await searchDuckDuckGoInstant(query) : [];
-  const merged = [...htmlResults, ...instantResults];
-
-  const unique = [];
-  const seen = new Set();
-  for (const r of merged) {
-    const key = `${r.title}|${r.snippet}`.slice(0, 120);
-    if (!seen.has(key) && (r.title || r.snippet)) {
-      seen.add(key);
-      unique.push(r);
-    }
-    if (unique.length >= 5) break;
-  }
-
-  if (unique.length > 0) return unique;
-  return await searchWikipediaFallback(query);
 }
 
 function extractBase64Image(attachment) {
@@ -259,26 +156,27 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  let fallbackMsg = "Temporary issue";
+
   try {
-    const apiToken = (process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY || "").trim();
+    const cfToken = (process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY || "").trim();
     const accountId = (CF_ACCOUNT_ID || "").trim();
+    const tavilyKey = (process.env.TAVILY_API_KEY || "").trim();
 
-    if (!accountId || !apiToken) {
-      return res.status(200).json({
-        reply: "Temporary issue",
-      });
-    }
-
-    const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
     const { message = "", history = [], attachment = null } = body;
 
     const cleanMessage = typeof message === "string" ? message.trim() : "";
+    fallbackMsg = getFallbackErrorText(cleanMessage);
+
     const parsedImage = extractBase64Image(attachment);
 
+    if (!accountId || !cfToken) {
+      return res.status(200).json({ reply: fallbackMsg });
+    }
+
     if (!cleanMessage && !parsedImage) {
-      return res.status(200).json({
-        reply: "Temporary issue",
-      });
+      return res.status(200).json({ reply: fallbackMsg });
     }
 
     if (parsedImage) {
@@ -286,19 +184,19 @@ module.exports = async function handler(req, res) {
       const imageBytes = Array.from(Buffer.from(parsedImage.base64, "base64"));
 
       const userInstruction = cleanMessage
-        ? `User message: ${cleanMessage}\nReply directly in the user's language (defaulting to English if not specified).`
-        : "Look closely at this image and describe what is shown or written clearly in English (or matching any text language in the image).";
+        ? `${cleanMessage}\nReply concisely and naturally in the user's language (defaulting to English).`
+        : "Describe what is clearly shown or written in this image concisely and naturally in English (default language).";
 
       const visionRes = await fetch(visionEndpoint, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${apiToken}`,
+          Authorization: `Bearer ${cfToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           prompt: userInstruction,
           image: imageBytes,
-          max_tokens: 1000,
+          max_tokens: 900,
           temperature: 0.35,
         }),
       });
@@ -313,9 +211,7 @@ module.exports = async function handler(req, res) {
         return res.status(200).json({ reply: visionReply.trim() });
       }
 
-      return res.status(200).json({
-        reply: "Temporary issue",
-      });
+      return res.status(200).json({ reply: fallbackMsg });
     }
 
     const safeHistory = Array.isArray(history)
@@ -327,42 +223,53 @@ module.exports = async function handler(req, res) {
               typeof item.content === "string" &&
               item.content.trim()
           )
-          .slice(-10)
+          .slice(-8)
           .map((item) => ({
             role: item.role,
             content: item.content.trim(),
           }))
       : [];
 
-    let searchResults = [];
+    let searchData = { answer: "", results: [] };
     let searchContext = "";
-    if (shouldSearchWeb(cleanMessage)) {
-      searchResults = await performWebSearch(cleanMessage);
-      if (searchResults.length > 0) {
-        const formattedResults = searchResults
-          .map(
-            (r, idx) =>
-              `${idx + 1}. ${r.title}\nSnippet: ${r.snippet}${r.url ? `\nSource: ${r.url}` : ""}`
-          )
-          .join("\n\n");
 
-        searchContext = `\n\n[Web Search Results for "${cleanMessage}"]\n${formattedResults}\n[End of Search Results]`;
+    if (shouldSearchWeb(cleanMessage)) {
+      if (tavilyKey) {
+        searchData = await searchWithTavily(cleanMessage, tavilyKey);
+        if (searchData.results.length > 0 || searchData.answer) {
+          const formattedItems = searchData.results
+            .map(
+              (r, idx) =>
+                `${idx + 1}. ${r.title}\nDetails: ${r.snippet}${r.url ? `\nSource: ${r.url}` : ""}`
+            )
+            .join("\n\n");
+
+          searchContext = `\n\n[Verified Web Search Results]\n${
+            searchData.answer ? `Summary: ${searchData.answer}\n\n` : ""
+          }${formattedItems}\n[End Verified Web Search Results]`;
+        } else {
+          searchContext =
+            "\n\n[Web Search Status: No verified search results found for this query. Do not guess or fabricate facts.]";
+        }
+      } else {
+        searchContext =
+          "\n\n[Web Search Status: Search API key is not configured yet. Do not guess or fabricate live facts.]";
       }
     }
-
-    const currentTimeInfo = getCurrentTimeInfo();
 
     let userPrompt = cleanMessage;
     if (attachment && attachment.name) {
       userPrompt = cleanMessage
-        ? `${cleanMessage}\n\n[Attached file: ${attachment.name}]`
-        : `[Attached file: ${attachment.name}] Please help me with this.`;
+        ? `${cleanMessage}\n[Attached file: ${attachment.name}]`
+        : `[Attached file: ${attachment.name}]`;
     }
 
-    userPrompt = `[Current Date & Time: ${currentTimeInfo}]\n\n${userPrompt}`;
+    if (needsDateOrTime(cleanMessage)) {
+      userPrompt = `[Current Date & Time: ${getCurrentTimeInfo()}]\n\n${userPrompt}`;
+    }
 
     if (searchContext) {
-      userPrompt = `${userPrompt}${searchContext}\n\nUse the web search results above to give a clear, accurate, and complete answer in the user's language.`;
+      userPrompt = `${userPrompt}${searchContext}`;
     }
 
     const messages = [
@@ -376,13 +283,13 @@ module.exports = async function handler(req, res) {
     const response = await fetch(textEndpoint, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiToken}`,
+        Authorization: `Bearer ${cfToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         messages,
-        max_tokens: 1500,
-        temperature: 0.45,
+        max_tokens: 1200,
+        temperature: 0.35,
       }),
     });
 
@@ -392,17 +299,12 @@ module.exports = async function handler(req, res) {
     if (response.ok && typeof replyText === "string" && replyText.trim()) {
       return res.status(200).json({
         reply: replyText.trim(),
-        searched: searchResults.length > 0,
-        sources: searchResults.map((r) => ({ title: r.title, url: r.url })),
+        searched: searchData.results.length > 0,
       });
     }
 
-    return res.status(200).json({
-      reply: "Temporary issue",
-    });
+    return res.status(200).json({ reply: fallbackMsg });
   } catch (err) {
-    return res.status(200).json({
-      reply: "Temporary issue",
-    });
+    return res.status(200).json({ reply: fallbackMsg });
   }
 };
