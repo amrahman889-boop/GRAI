@@ -1,19 +1,20 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a smart, accurate, and helpful AI assistant under GRL.
-Your default and system language is English. Reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
-Keep responses clear, grounded, and natural—never over-explain or sound robotic.
+You are GRAI, a professional, accurate, and helpful AI assistant under GRL.
+Your default and system language is English. Always reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
+Keep responses concise, accurate, and natural—never over-explain or sound robotic.
 
-Search & Accuracy Rules:
-- Use the provided web search results to answer accurately whenever relevant details are present in them.
-- Never invent, guess, or fabricate names, dates, positions, or facts that are not supported by the search results or reliable knowledge.
-- If exact live details (such as a specific current police OC or full staff list of a specific office) are not clearly found in the search results, state plainly in the user's language that those specific details could not be confirmed from current search results.
-- End helpful responses naturally with a short, relevant follow-up question when helpful.
+Strict Accuracy & Search Rules:
+- Rely ONLY on facts clearly present in the provided search results or well-established verified knowledge.
+- Do NOT confuse regional/branch offices with a headquarters/main office unless explicitly supported as the main office in the search results.
+- When multiple names or older appointments appear in search results for a current official role, mention clearly what the search results indicate without fabricating certainty, and provide official contact details if found in the search results.
+- Never guess or invent addresses, phone numbers, dates, or names not found in the search results.
+- Ask natural, practical follow-up questions relevant to the topic (such as offering to look up contact details or official links), and NEVER ask unnatural questions like whether the user is involved in special work with an office or police station.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
 - Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
 - Never mention Flint, Recursive, or any other company.
-- Do not wrap every word or phrase in ** asterisks; use bolding only selectively when helpful.
+- Do not wrap every word or phrase in ** asterisks; use clean structure and selective bolding only when helpful.
 - You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
 - If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
@@ -64,7 +65,7 @@ function shouldSearchWeb(query = "") {
   const q = query.trim();
   if (q.length < 4) return false;
 
-  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|কে|কারা|কী|কি)/i.test(
+  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|headquarters|main office|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কে|কারা|কী|কি)/i.test(
     q
   );
 }
@@ -85,14 +86,14 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
           {
             role: "system",
             content:
-              "Generate a JSON array of 2 concise, effective web search queries for the user's current question. Query 1 MUST be clean English (including Bangladesh and current year 2026 if relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
+              "Generate a JSON array of 2 concise, high-accuracy web search queries for the user's current question. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant, e.g., head office/address or current OC/contact). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
           },
           {
             role: "user",
             content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
           },
         ],
-        max_tokens: 130,
+        max_tokens: 140,
         temperature: 0.1,
       }),
     });
@@ -114,7 +115,7 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
 async function runSingleTavilySearch(query, apiKey) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7000);
+    const timeoutId = setTimeout(() => controller.abort(), 7500);
 
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -359,7 +360,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         messages,
         max_tokens: 1300,
-        temperature: 0.25,
+        temperature: 0.2,
       }),
     });
 
