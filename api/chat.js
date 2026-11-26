@@ -1,15 +1,18 @@
 const SYSTEM_PROMPT = `
 You are GRAI, a smart, accurate, and helpful AI assistant under GRL.
 Your default and system language is English. Reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
-When live web search results are provided, carefully read the full details and synthesize a well-structured, accurate, and helpful answer (using clean bullet points when listing dates, venues, schedules, or contacts).
-Never invent or guess facts that are not supported by the search results. If verified details (like a specific officer's current name) are not confirmed in the search results, clearly state what IS confirmed (e.g., jurisdiction, address, official phone numbers) and note honestly that the specific name could not be confirmed from current sources.
-End helpful responses naturally with a brief, relevant follow-up question to keep the conversation helpful.
+Keep responses clear, grounded, and natural—never over-explain or sound robotic.
+
+Strict Relevance & Anti-Hallucination Rules:
+- ONLY use search results that directly match the user's actual topic. Completely ignore and never mention unrelated topics from search results (for example, do not bring up unrelated schemes, people, or events that do not match the user's question).
+- If the provided search results do not clearly and reliably answer the user's specific question, say plainly in the user's language that verified details could not be found right now. Do NOT guess, invent dates/venues, or force unrelated search hits into the answer.
+- End helpful responses naturally with a short, relevant follow-up question when helpful.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
 - Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
 - Never mention Flint, Recursive, or any other company.
-- Do not wrap every word or phrase in ** asterisks; use bolding only selectively for key labels or dates.
+- Do not wrap every word or phrase in ** asterisks; use bolding only selectively when helpful.
 - You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
 - If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
@@ -54,19 +57,31 @@ function isNonSearchChat(query = "") {
   return patterns.some((p) => p.test(q));
 }
 
-function shouldSearchWeb(query = "") {
+function shouldSearchWeb(query = "", history = []) {
   if (isNonSearchChat(query)) return false;
   const q = query.trim();
   if (q.length < 4) return false;
 
-  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|কে|কারা|কী|কি)/i.test(
+  const hasRecentHistory = Array.isArray(history) && history.length > 0;
+  const followUpRef = /(এই বছর|এই মাস|ভালো করে সার্চ|সার্চ করে দেখো|this year|this month|search again|check again)/i.test(
+    q
+  );
+
+  if (hasRecentHistory && followUpRef) return true;
+
+  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|livestock|office|department|oc|police|thana|law|act|cyber|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|প্রাণিসম্পদ|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|কে|কারা|কী|কি)/i.test(
     q
   );
 }
 
-async function generateSearchQueries(userMessage, cfToken, accountId) {
+async function generateSearchQueries(userMessage, safeHistory, cfToken, accountId) {
   try {
     const todayStr = getCurrentTimeInfo();
+    const recentContext = safeHistory
+      .slice(-4)
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n");
+
     const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
 
     const res = await fetch(textEndpoint, {
@@ -80,14 +95,14 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
           {
             role: "system",
             content:
-              "You generate optimal web search queries. Given a user question and current date, output ONLY a JSON array of 2 concise search queries: the FIRST query MUST be clean, natural English (e.g., 'Bangladesh Cyber Laws'), and the SECOND query in the user's original language if non-English (or another clean English query). Output ONLY valid JSON array, nothing else.",
+              "Convert the user's question (using recent chat context if it's a follow-up) into a JSON array of 2 focused web search queries. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's language if non-English. Output ONLY a JSON array of strings.",
           },
           {
             role: "user",
-            content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
+            content: `Current Date: ${todayStr}\nRecent Context:\n${recentContext || "None"}\n\nCurrent User Message: ${userMessage}`,
           },
         ],
-        max_tokens: 120,
+        max_tokens: 130,
         temperature: 0.1,
       }),
     });
@@ -106,6 +121,24 @@ async function generateSearchQueries(userMessage, cfToken, accountId) {
   return [userMessage];
 }
 
+function isResultRelevant(item, queries, combinedText) {
+  const hay = `${item.title || ""} ${item.snippet || ""}`.toLowerCase();
+  if (!hay.trim()) return false;
+
+  if (/প্রাণিসম্পদ|livestock/i.test(combinedText)) {
+    return /livestock|pranisampad|প্রাণিসম্পদ|মৎস্য ও প্রাণিসম্পদ|পশু|মেলা|fair/i.test(hay);
+  }
+
+  const terms = queries
+    .join(" ")
+    .toLowerCase()
+    .split(/[^a-z0-9\u0980-\u09ff]+/)
+    .filter((t) => t.length >= 3 && !["2026", "bangladesh", "search", "latest", "news"].includes(t));
+
+  if (terms.length === 0) return true;
+  return terms.some((term) => hay.includes(term));
+}
+
 async function runSingleTavilySearch(query, apiKey) {
   try {
     const controller = new AbortController();
@@ -120,7 +153,7 @@ async function runSingleTavilySearch(query, apiKey) {
         api_key: apiKey,
         query,
         search_depth: "advanced",
-        max_results: 4,
+        max_results: 5,
         include_answer: true,
         include_raw_content: false,
       }),
@@ -150,32 +183,35 @@ async function runSingleTavilySearch(query, apiKey) {
   }
 }
 
-async function performDeepSearch(userMessage, cfToken, accountId, tavilyKey) {
-  const queries = await generateSearchQueries(userMessage, cfToken, accountId);
+async function performDeepSearch(userMessage, safeHistory, cfToken, accountId, tavilyKey) {
+  const queries = await generateSearchQueries(userMessage, safeHistory, cfToken, accountId);
   const searchOutputs = await Promise.all(
     queries.map((q) => runSingleTavilySearch(q, tavilyKey))
   );
 
-  const answers = [];
-  const allResults = [];
+  const combinedContextText = `${safeHistory.slice(-3).map((m) => m.content).join(" ")} ${userMessage}`;
+  const filteredResults = [];
   const seenUrls = new Set();
 
   for (const out of searchOutputs) {
-    if (out.answer) answers.push(out.answer);
     for (const r of out.results) {
       const key = r.url || r.title;
-      if (!seenUrls.has(key)) {
+      if (!seenUrls.has(key) && isResultRelevant(r, queries, combinedContextText)) {
         seenUrls.add(key);
-        allResults.push(r);
+        filteredResults.push(r);
       }
     }
   }
+
+  const answers = searchOutputs
+    .map((o) => o.answer)
+    .filter((a) => a && isResultRelevant({ title: "", snippet: a }, queries, combinedContextText));
 
   return {
     queries,
     displayQuery: queries[0] || userMessage,
     summary: answers.join(" | "),
-    results: allResults.slice(0, 6),
+    results: filteredResults.slice(0, 5),
   };
 }
 
@@ -296,9 +332,15 @@ module.exports = async function handler(req, res) {
     let displaySearchQuery = "";
     let searchContext = "";
 
-    if (shouldSearchWeb(cleanMessage)) {
+    if (shouldSearchWeb(cleanMessage, safeHistory)) {
       if (tavilyKey) {
-        const deepSearch = await performDeepSearch(cleanMessage, cfToken, accountId, tavilyKey);
+        const deepSearch = await performDeepSearch(
+          cleanMessage,
+          safeHistory,
+          cfToken,
+          accountId,
+          tavilyKey
+        );
         searchResultsCount = deepSearch.results.length;
         displaySearchQuery = deepSearch.displayQuery || cleanMessage;
 
@@ -310,12 +352,12 @@ module.exports = async function handler(req, res) {
             )
             .join("\n\n");
 
-          searchContext = `\n\n[Verified Live Web Search Results (Queries: ${deepSearch.queries.join(", ")})]\n${
+          searchContext = `\n\n[Relevant Web Search Results (Queries: ${deepSearch.queries.join(", ")})]\n${
             deepSearch.summary ? `Key Summary: ${deepSearch.summary}\n\n` : ""
-          }${formattedItems}\n[End Web Search Results]`;
+          }${formattedItems}\n[End Relevant Web Search Results]`;
         } else {
           searchContext =
-            "\n\n[Web Search Status: No verified search results returned. Do not guess or invent facts.]";
+            "\n\n[Web Search Status: No directly relevant verified search results found. Do not guess or bring up unrelated topics.]";
         }
       } else {
         searchContext =
@@ -354,7 +396,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         messages,
         max_tokens: 1300,
-        temperature: 0.25,
+        temperature: 0.2,
       }),
     });
 
