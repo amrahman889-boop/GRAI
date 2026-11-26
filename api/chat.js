@@ -3,9 +3,10 @@ You are GRAI, a smart, accurate, and helpful AI assistant under GRL.
 Your default and system language is English. Reply in clear, natural English by default, and reply naturally in the user's language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) when the user writes in that language.
 Keep responses clear, grounded, and natural—never over-explain or sound robotic.
 
-Strict Relevance & Anti-Hallucination Rules:
-- ONLY use search results that directly match the user's actual topic. Completely ignore and never mention unrelated topics from search results (for example, do not bring up unrelated schemes, people, or events that do not match the user's question).
-- If the provided search results do not clearly and reliably answer the user's specific question, say plainly in the user's language that verified details could not be found right now. Do NOT guess, invent dates/venues, or force unrelated search hits into the answer.
+Search & Accuracy Rules:
+- Use the provided web search results to answer accurately whenever relevant details are present in them.
+- Never invent, guess, or fabricate names, dates, positions, or facts that are not supported by the search results or reliable knowledge.
+- If exact live details (such as a specific current police OC or full staff list of a specific office) are not clearly found in the search results, state plainly in the user's language that those specific details could not be confirmed from current search results.
 - End helpful responses naturally with a short, relevant follow-up question when helpful.
 
 Identity & Formatting Rules:
@@ -51,37 +52,26 @@ function isNonSearchChat(query = "") {
 
   const patterns = [
     /^(hi|hello|hey|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
+    /^(হ্যাঁ|হ্যা|না|ঠিক আছে|ওকে|yes|no)$/i,
     /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ওয়েবসাইট সার্চ করতে পারো|ওয়েবসাইটের ভিতর যেতে পারো)/i,
   ];
 
   return patterns.some((p) => p.test(q));
 }
 
-function shouldSearchWeb(query = "", history = []) {
+function shouldSearchWeb(query = "") {
   if (isNonSearchChat(query)) return false;
   const q = query.trim();
   if (q.length < 4) return false;
 
-  const hasRecentHistory = Array.isArray(history) && history.length > 0;
-  const followUpRef = /(এই বছর|এই মাস|ভালো করে সার্চ|সার্চ করে দেখো|this year|this month|search again|check again)/i.test(
-    q
-  );
-
-  if (hasRecentHistory && followUpRef) return true;
-
-  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|livestock|office|department|oc|police|thana|law|act|cyber|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|প্রাণিসম্পদ|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|কে|কারা|কী|কি)/i.test(
+  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|কে|কারা|কী|কি)/i.test(
     q
   );
 }
 
-async function generateSearchQueries(userMessage, safeHistory, cfToken, accountId) {
+async function generateSearchQueries(userMessage, cfToken, accountId) {
   try {
     const todayStr = getCurrentTimeInfo();
-    const recentContext = safeHistory
-      .slice(-4)
-      .map((m) => `${m.role}: ${m.content}`)
-      .join("\n");
-
     const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
 
     const res = await fetch(textEndpoint, {
@@ -95,11 +85,11 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
           {
             role: "system",
             content:
-              "Convert the user's question (using recent chat context if it's a follow-up) into a JSON array of 2 focused web search queries. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's language if non-English. Output ONLY a JSON array of strings.",
+              "Generate a JSON array of 2 concise, effective web search queries for the user's current question. Query 1 MUST be clean English (including Bangladesh and current year 2026 if relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
           },
           {
             role: "user",
-            content: `Current Date: ${todayStr}\nRecent Context:\n${recentContext || "None"}\n\nCurrent User Message: ${userMessage}`,
+            content: `Current Date: ${todayStr}\nUser Question: ${userMessage}`,
           },
         ],
         max_tokens: 130,
@@ -119,24 +109,6 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
   } catch (_) {}
 
   return [userMessage];
-}
-
-function isResultRelevant(item, queries, combinedText) {
-  const hay = `${item.title || ""} ${item.snippet || ""}`.toLowerCase();
-  if (!hay.trim()) return false;
-
-  if (/প্রাণিসম্পদ|livestock/i.test(combinedText)) {
-    return /livestock|pranisampad|প্রাণিসম্পদ|মৎস্য ও প্রাণিসম্পদ|পশু|মেলা|fair/i.test(hay);
-  }
-
-  const terms = queries
-    .join(" ")
-    .toLowerCase()
-    .split(/[^a-z0-9\u0980-\u09ff]+/)
-    .filter((t) => t.length >= 3 && !["2026", "bangladesh", "search", "latest", "news"].includes(t));
-
-  if (terms.length === 0) return true;
-  return terms.some((term) => hay.includes(term));
 }
 
 async function runSingleTavilySearch(query, apiKey) {
@@ -183,35 +155,32 @@ async function runSingleTavilySearch(query, apiKey) {
   }
 }
 
-async function performDeepSearch(userMessage, safeHistory, cfToken, accountId, tavilyKey) {
-  const queries = await generateSearchQueries(userMessage, safeHistory, cfToken, accountId);
+async function performDeepSearch(userMessage, cfToken, accountId, tavilyKey) {
+  const queries = await generateSearchQueries(userMessage, cfToken, accountId);
   const searchOutputs = await Promise.all(
     queries.map((q) => runSingleTavilySearch(q, tavilyKey))
   );
 
-  const combinedContextText = `${safeHistory.slice(-3).map((m) => m.content).join(" ")} ${userMessage}`;
-  const filteredResults = [];
+  const answers = [];
+  const allResults = [];
   const seenUrls = new Set();
 
   for (const out of searchOutputs) {
+    if (out.answer) answers.push(out.answer);
     for (const r of out.results) {
       const key = r.url || r.title;
-      if (!seenUrls.has(key) && isResultRelevant(r, queries, combinedContextText)) {
+      if (!seenUrls.has(key)) {
         seenUrls.add(key);
-        filteredResults.push(r);
+        allResults.push(r);
       }
     }
   }
-
-  const answers = searchOutputs
-    .map((o) => o.answer)
-    .filter((a) => a && isResultRelevant({ title: "", snippet: a }, queries, combinedContextText));
 
   return {
     queries,
     displayQuery: queries[0] || userMessage,
     summary: answers.join(" | "),
-    results: filteredResults.slice(0, 5),
+    results: allResults.slice(0, 6),
   };
 }
 
@@ -332,15 +301,9 @@ module.exports = async function handler(req, res) {
     let displaySearchQuery = "";
     let searchContext = "";
 
-    if (shouldSearchWeb(cleanMessage, safeHistory)) {
+    if (shouldSearchWeb(cleanMessage)) {
       if (tavilyKey) {
-        const deepSearch = await performDeepSearch(
-          cleanMessage,
-          safeHistory,
-          cfToken,
-          accountId,
-          tavilyKey
-        );
+        const deepSearch = await performDeepSearch(cleanMessage, cfToken, accountId, tavilyKey);
         searchResultsCount = deepSearch.results.length;
         displaySearchQuery = deepSearch.displayQuery || cleanMessage;
 
@@ -352,12 +315,12 @@ module.exports = async function handler(req, res) {
             )
             .join("\n\n");
 
-          searchContext = `\n\n[Relevant Web Search Results (Queries: ${deepSearch.queries.join(", ")})]\n${
-            deepSearch.summary ? `Key Summary: ${deepSearch.summary}\n\n` : ""
-          }${formattedItems}\n[End Relevant Web Search Results]`;
+          searchContext = `\n\n[Web Search Results for "${cleanMessage}" (Queries: ${deepSearch.queries.join(", ")})]\n${
+            deepSearch.summary ? `Summary: ${deepSearch.summary}\n\n` : ""
+          }${formattedItems}\n[End Web Search Results]`;
         } else {
           searchContext =
-            "\n\n[Web Search Status: No directly relevant verified search results found. Do not guess or bring up unrelated topics.]";
+            "\n\n[Web Search Status: No search results returned for this query. Do not guess or invent facts.]";
         }
       } else {
         searchContext =
@@ -396,7 +359,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         messages,
         max_tokens: 1300,
-        temperature: 0.2,
+        temperature: 0.25,
       }),
     });
 
