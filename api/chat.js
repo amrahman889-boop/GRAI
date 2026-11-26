@@ -1,22 +1,25 @@
 const SYSTEM_PROMPT = `
-You are GRAI, a smart, natural, friendly, and accurate AI assistant under GRL.
+You are GRAI, a smart, natural, helpful, and accurate AI assistant under GRL.
 Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or asks for another language, in which case reply naturally in that language.
 
 Conversation & Memory Rules:
-- Always pay close attention to the immediately preceding messages in the conversation so short follow-ups (like "এটা পড়তে চাই আমি", "ওই দুটো ড্রেস", "বিস্তারিত জানতে চাই", "করো") are understood in their exact previous context rather than taken out of context.
-- If the conversation just started with a short greeting or call like "ওই", "hey", or "hi", respond naturally and casually (e.g. "হ্যাঁ বলো, কী খবর?" or "Hey, what's up?") without talking about memory, chat history, or just starting a conversation.
+- Always pay close attention to the entire recent conversation so short follow-ups use the exact previous context naturally.
+- If the conversation just started with a short greeting or call like "ওই", "hey", or "hi", respond naturally and casually without talking about memory or chat history.
 - Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
-- Keep casual chat, feelings, and playful banter natural and concise without repeating robotic disclaimers like "I am a virtual assistant so I cannot physically go" on joking follow-ups.
+- Keep casual chat, feelings, and playful banter concise and natural without repeating robotic disclaimers.
+- In urgent health or safety situations (such as severe chest pain radiating to the arm, neck, or jaw), be calm, clear, and structured: highlight immediate emergency care (such as calling emergency services / 999 in Bangladesh or going to the nearest emergency department) right away rather than giving vague guessing.
 - Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
 
-Fact & Search Rules:
-- Never invent or guess facts, descriptions, dates, prices, official names, addresses, or live events that are not supported by the provided search results or reliable knowledge. If verified details are unavailable, say so plainly and briefly.
+Fact, Uncertainty & Search Rules:
+- Whenever a question involves real-world facts, current/recent events, numbers/helplines, places/hospitals, laws/rules, websites, or anything you are not 100% certain about, rely on the provided live web search results rather than guessing from memory.
+- Never invent or guess phone numbers, helpline purposes, addresses, dates, prices, or facts not supported by the search results or verified knowledge. If search results do not clearly confirm something, state clearly that verified details are not confirmed and advise checking official sources.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
 - Only when asked what GRAI or GRL means or stands for, state that GRAI stands for Gamer Rafi Artificial Intelligence and GRL stands for Gamer Rafi Limited.
 - Never mention Flint, Recursive, or any other company.
 - Do not wrap every word or phrase in ** asterisks; use bolding only selectively when helpful.
+- Use clean, standard Bengali spelling and clear punctuation when replying in Bengali.
 - You have vision capability. When an image is attached, inspect it carefully and answer directly in the user's language (defaulting to English).
 - If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
@@ -48,33 +51,53 @@ function getCurrentTimeInfo() {
   }
 }
 
-function isNonSearchChat(query = "") {
+function isPureCasualOrGreeting(query = "", history = []) {
   const q = query.trim().toLowerCase();
-  if (!q || q.length < 3) return true;
+  if (!q) return true;
 
-  const patterns = [
-    /^(hi|hello|hey|oi|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|ওই|সালাম|কেমন আছেন|ধন্যবাদ)\b/i,
-    /(তুমি কে|তুমি কেডা|তোমার মালিক|who are you|your name|grl|grai|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|চলো ফান করি|জোকস|পড়তে চাই|বিস্তারিত জানতে চাই|ওই দুটো)/i,
-  ];
+  // শুধু ইমোজি বা একদম ছোট শুভেচ্ছা/আড্ডা হলে সার্চ নয়
+  const onlyGreetingOrEmoji =
+    /^(hi|hello|hey|oi|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|ওই|সালাম|কেমন আছেন|ধন্যবাদ|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|চলো ফান করি|জোকস)[\s!.?]*$/i;
+  if (onlyGreetingOrEmoji.test(q)) return true;
 
-  return patterns.some((p) => p.test(q));
+  // ইতিমধ্যে কোনো তথ্যভিত্তিক বা নম্বর/স্থান/স্বাস্থ্য আলোচনা শুরু হয়ে থাকলে সার্চ চলতে পারে
+  const hasTopicInHistory =
+    Array.isArray(history) &&
+    history.some(
+      (m) =>
+        m &&
+        m.role === "user" &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 8 &&
+        !onlyGreetingOrEmoji.test(m.content.trim().toLowerCase())
+    );
+
+  if (!hasTopicInHistory && q.length < 4) return true;
+
+  return false;
 }
 
-function shouldSearchWeb(query = "") {
-  if (isNonSearchChat(query)) return false;
+function shouldSearchWeb(query = "", history = []) {
   const q = query.trim();
-  if (q.length < 4) return false;
+  if (!q) return false;
+  if (isPureCasualOrGreeting(q, history)) return false;
 
-  return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়)/i.test(
-    q
-  );
+  // কোনো নম্বর (যেমন 16263, 999), প্রশ্নবোধক/তথ্য চাওয়া, বা বর্তমান/স্থান/ওয়েবসাইট/নিশ্চিত নয় এমন বিষয় হলে সার্চ করবে
+  const hasNumber = /\d{2,}/.test(q);
+  const hasQuestionOrLookup =
+    /[?？]|(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|hospital|clinic|near|nearest|website|address|location|who|what|when|where|which|how|কবে|কখন|কোথায়|কী|কি|কিসের|খবর|তথ্য|মেলা|দপ্তর|হসপিটাল|হাসপাতাল|নিকটস্থ|কাছাকাছি|সার্চ|দাম|ওয়েবসাইট|ঠিকানা|লোকেশন|কেন|কীভাবে)/i.test(
+      q
+    );
+
+  const hasHistory = Array.isArray(history) && history.length > 0;
+  return hasNumber || hasQuestionOrLookup || hasHistory || q.length >= 12;
 }
 
 async function generateSearchQueries(userMessage, safeHistory, cfToken, accountId) {
   try {
     const todayStr = getCurrentTimeInfo();
     const recentContext = safeHistory
-      .slice(-4)
+      .slice(-6)
       .map((m) => `${m.role}: ${m.content}`)
       .join("\n");
 
@@ -91,14 +114,14 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
           {
             role: "system",
             content:
-              "Generate a JSON array of 2 concise web search queries for the user's factual question, using recent chat context only if the current message is a follow-up to a factual topic. Query 1 MUST be clean English (including Bangladesh and current year 2026 when relevant). Query 2 should be a concise query in the user's original language if non-English. Output ONLY a valid JSON array of 2 strings.",
+              "You generate web search queries to find verified, accurate information. Combine the current user message with relevant facts from Recent Context (such as numbers like 16263, places like Dhanmondi 5, or topics) when needed. Output ONLY a JSON array of 2 concise search queries: Query 1 MUST be clean English (with Bangladesh/Dhaka and 2026 when relevant), and Query 2 in Bengali if the user wrote in Bengali (or another clean English query). Output ONLY valid JSON array of 2 strings.",
           },
           {
             role: "user",
-            content: `Current Date: ${todayStr}\nRecent Context:\n${recentContext || "None"}\n\nUser Question: ${userMessage}`,
+            content: `Current Date: ${todayStr}\nRecent Context:\n${recentContext || "None"}\n\nCurrent User Message: ${userMessage}`,
           },
         ],
-        max_tokens: 130,
+        max_tokens: 150,
         temperature: 0.1,
       }),
     });
@@ -114,13 +137,14 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
     }
   } catch (_) {}
 
-  return [userMessage];
+  const lastUserMsg = [...safeHistory].reverse().find((m) => m.role === "user")?.content || "";
+  return [lastUserMsg ? `${lastUserMsg} ${userMessage}`.trim() : userMessage];
 }
 
 async function runSingleTavilySearch(query, apiKey) {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 7500);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -307,7 +331,7 @@ module.exports = async function handler(req, res) {
     let displaySearchQuery = "";
     let searchContext = "";
 
-    if (shouldSearchWeb(cleanMessage)) {
+    if (shouldSearchWeb(cleanMessage, safeHistory)) {
       if (tavilyKey) {
         const deepSearch = await performDeepSearch(
           cleanMessage,
@@ -371,7 +395,7 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         messages,
         max_tokens: 1200,
-        temperature: 0.35,
+        temperature: 0.3,
       }),
     });
 
