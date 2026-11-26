@@ -24,9 +24,85 @@ Identity & Formatting Rules:
 - If a technical issue occurs, say "Temporary issue" by default (or "সাময়িক সমস্যা" only when the user writes in Bengali) briefly.
 `.trim();
 
-const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID || "5d17dd64f2a0e4001e1f608ac4f6676d";
+const PRIMARY_ACCOUNT_ID = (
+  process.env.CF_ACCOUNT_ID || "5d17dd64f2a0e4001e1f608ac4f6676d"
+).trim();
+const SECONDARY_ACCOUNT_ID = (
+  process.env.CF_ACCOUNT_ID_2 || "f39e832eb036785cac96dfdd98f271fb"
+).trim();
+
 const TEXT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const VISION_MODEL = "@cf/meta/llama-3.2-11b-vision-instruct";
+
+function getCredentialsList() {
+  const primaryToken = (
+    process.env.GEMINI_API_KEY ||
+    process.env.CF_API_TOKEN ||
+    ""
+  ).trim();
+  const secondaryToken = (
+    process.env.CF_API_TOKEN_2 ||
+    process.env.CF_API_TOKEN_SECOND ||
+    primaryToken
+  ).trim();
+  const thirdToken = (process.env.CF_API_TOKEN_3 || "").trim();
+
+  const pairs = [];
+  if (PRIMARY_ACCOUNT_ID && primaryToken) {
+    pairs.push({ accountId: PRIMARY_ACCOUNT_ID, token: primaryToken });
+  }
+  if (SECONDARY_ACCOUNT_ID && secondaryToken) {
+    pairs.push({ accountId: SECONDARY_ACCOUNT_ID, token: secondaryToken });
+  }
+  if (PRIMARY_ACCOUNT_ID && secondaryToken && secondaryToken !== primaryToken) {
+    pairs.push({ accountId: PRIMARY_ACCOUNT_ID, token: secondaryToken });
+  }
+  if (SECONDARY_ACCOUNT_ID && thirdToken) {
+    pairs.push({ accountId: SECONDARY_ACCOUNT_ID, token: thirdToken });
+  } else if (PRIMARY_ACCOUNT_ID && thirdToken) {
+    pairs.push({ accountId: PRIMARY_ACCOUNT_ID, token: thirdToken });
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const item of pairs) {
+    const key = `${item.accountId}::${item.token}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(item);
+    }
+  }
+  return unique;
+}
+
+async function runCloudflareModelWithFallback(modelName, payload, credentials) {
+  for (const cred of credentials) {
+    try {
+      const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cred.accountId}/ai/run/${modelName}`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cred.token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      const textOut =
+        data?.result?.response ||
+        data?.result?.description ||
+        data?.result?.output_text;
+
+      if (res.ok && typeof textOut === "string" && textOut.trim()) {
+        return { text: textOut.trim(), cred };
+      }
+    } catch (_) {
+      // পরের ক্রেডেনশিয়াল দিয়ে চেষ্টা করবে
+    }
+  }
+  return null;
+}
 
 function getFallbackErrorText(text = "") {
   return /[\u0980-\u09FF]/.test(text) ? "সাময়িক সমস্যা" : "Temporary issue";
@@ -55,12 +131,10 @@ function isPureCasualOrGreeting(query = "", history = []) {
   const q = query.trim().toLowerCase();
   if (!q) return true;
 
-  // শুধু ইমোজি বা একদম ছোট শুভেচ্ছা/আড্ডা হলে সার্চ নয়
   const onlyGreetingOrEmoji =
     /^(hi|hello|hey|oi|salam|assalamu alaikum|good morning|good afternoon|good evening|kemon acho|ki khobor|valo acho|thanks|thank you|dhonnobad|ok|okay|hmm|হাই|হ্যালো|ওই|সালাম|কেমন আছেন|ধন্যবাদ|ভালো লাগতেছে না|মন খারাপ|চলো মজা করি|চলো ফান করি|জোকস)[\s!.?]*$/i;
   if (onlyGreetingOrEmoji.test(q)) return true;
 
-  // ইতিমধ্যে কোনো তথ্যভিত্তিক বা নম্বর/স্থান/স্বাস্থ্য আলোচনা শুরু হয়ে থাকলে সার্চ চলতে পারে
   const hasTopicInHistory =
     Array.isArray(history) &&
     history.some(
@@ -82,7 +156,6 @@ function shouldSearchWeb(query = "", history = []) {
   if (!q) return false;
   if (isPureCasualOrGreeting(q, history)) return false;
 
-  // কোনো নম্বর (যেমন 16263, 999), প্রশ্নবোধক/তথ্য চাওয়া, বা বর্তমান/স্থান/ওয়েবসাইট/নিশ্চিত নয় এমন বিষয় হলে সার্চ করবে
   const hasNumber = /\d{2,}/.test(q);
   const hasQuestionOrLookup =
     /[?？]|(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|hospital|clinic|near|nearest|website|address|location|who|what|when|where|which|how|কবে|কখন|কোথায়|কী|কি|কিসের|খবর|তথ্য|মেলা|দপ্তর|হসপিটাল|হাসপাতাল|নিকটস্থ|কাছাকাছি|সার্চ|দাম|ওয়েবসাইট|ঠিকানা|লোকেশন|কেন|কীভাবে)/i.test(
@@ -93,7 +166,7 @@ function shouldSearchWeb(query = "", history = []) {
   return hasNumber || hasQuestionOrLookup || hasHistory || q.length >= 12;
 }
 
-async function generateSearchQueries(userMessage, safeHistory, cfToken, accountId) {
+async function generateSearchQueries(userMessage, safeHistory, credentials) {
   try {
     const todayStr = getCurrentTimeInfo();
     const recentContext = safeHistory
@@ -101,15 +174,9 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
       .map((m) => `${m.role}: ${m.content}`)
       .join("\n");
 
-    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
-
-    const res = await fetch(textEndpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const out = await runCloudflareModelWithFallback(
+      TEXT_MODEL,
+      {
         messages: [
           {
             role: "system",
@@ -123,11 +190,11 @@ async function generateSearchQueries(userMessage, safeHistory, cfToken, accountI
         ],
         max_tokens: 150,
         temperature: 0.1,
-      }),
-    });
+      },
+      credentials
+    );
 
-    const data = await res.json().catch(() => ({}));
-    const raw = data?.result?.response || "";
+    const raw = out?.text || "";
     const match = raw.match(/\[[\s\S]*\]/);
     if (match) {
       const parsed = JSON.parse(match[0]);
@@ -185,8 +252,8 @@ async function runSingleTavilySearch(query, apiKey) {
   }
 }
 
-async function performDeepSearch(userMessage, safeHistory, cfToken, accountId, tavilyKey) {
-  const queries = await generateSearchQueries(userMessage, safeHistory, cfToken, accountId);
+async function performDeepSearch(userMessage, safeHistory, credentials, tavilyKey) {
+  const queries = await generateSearchQueries(userMessage, safeHistory, credentials);
   const searchOutputs = await Promise.all(
     queries.map((q) => runSingleTavilySearch(q, tavilyKey))
   );
@@ -256,8 +323,7 @@ module.exports = async function handler(req, res) {
   let fallbackMsg = "Temporary issue";
 
   try {
-    const cfToken = (process.env.CF_API_TOKEN || process.env.GEMINI_API_KEY || "").trim();
-    const accountId = (CF_ACCOUNT_ID || "").trim();
+    const credentials = getCredentialsList();
     const tavilyKey = (process.env.TAVILY_API_KEY || "").trim();
 
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
@@ -268,7 +334,7 @@ module.exports = async function handler(req, res) {
 
     const parsedImage = extractBase64Image(attachment);
 
-    if (!accountId || !cfToken) {
+    if (credentials.length === 0) {
       return res.status(200).json({ reply: fallbackMsg });
     }
 
@@ -277,35 +343,24 @@ module.exports = async function handler(req, res) {
     }
 
     if (parsedImage) {
-      const visionEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${VISION_MODEL}`;
       const imageBytes = Array.from(Buffer.from(parsedImage.base64, "base64"));
-
       const userInstruction = cleanMessage
         ? `${cleanMessage}\nReply concisely and naturally in the user's language (defaulting to English).`
         : "Describe what is clearly shown or written in this image concisely and naturally in English (default language).";
 
-      const visionRes = await fetch(visionEndpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cfToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const visionOut = await runCloudflareModelWithFallback(
+        VISION_MODEL,
+        {
           prompt: userInstruction,
           image: imageBytes,
           max_tokens: 900,
           temperature: 0.35,
-        }),
-      });
+        },
+        credentials
+      );
 
-      const visionData = await visionRes.json().catch(() => ({}));
-      const visionReply =
-        visionData?.result?.response ||
-        visionData?.result?.description ||
-        visionData?.result?.output_text;
-
-      if (visionRes.ok && typeof visionReply === "string" && visionReply.trim()) {
-        return res.status(200).json({ reply: visionReply.trim() });
+      if (visionOut?.text) {
+        return res.status(200).json({ reply: visionOut.text });
       }
 
       return res.status(200).json({ reply: fallbackMsg });
@@ -336,8 +391,7 @@ module.exports = async function handler(req, res) {
         const deepSearch = await performDeepSearch(
           cleanMessage,
           safeHistory,
-          cfToken,
-          accountId,
+          credentials,
           tavilyKey
         );
         searchResultsCount = deepSearch.results.length;
@@ -384,27 +438,19 @@ module.exports = async function handler(req, res) {
       { role: "user", content: userPrompt },
     ];
 
-    const textEndpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${TEXT_MODEL}`;
-
-    const response = await fetch(textEndpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${cfToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const chatOut = await runCloudflareModelWithFallback(
+      TEXT_MODEL,
+      {
         messages,
         max_tokens: 1200,
         temperature: 0.3,
-      }),
-    });
+      },
+      credentials
+    );
 
-    const data = await response.json().catch(() => ({}));
-    const replyText = data?.result?.response;
-
-    if (response.ok && typeof replyText === "string" && replyText.trim()) {
+    if (chatOut?.text) {
       return res.status(200).json({
-        reply: replyText.trim(),
+        reply: chatOut.text,
         searched: searchResultsCount > 0,
         searchQuery: displaySearchQuery,
       });
@@ -415,3 +461,4 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ reply: fallbackMsg });
   }
 };
+
