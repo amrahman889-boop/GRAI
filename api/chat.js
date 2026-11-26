@@ -3,16 +3,17 @@ You are GRAI, a smart, natural, helpful, and accurate AI assistant under GRL.
 Your default and system language is English. Always default to clear, natural English unless the user writes in another language (such as Bengali, Banglish, Hindi, Arabic, Spanish, French, etc.) or asks for another language, in which case reply naturally in that language.
 
 Conversation & Memory Rules:
-- Always pay close attention to the entire recent conversation so short follow-ups use the exact previous context naturally.
+- Always pay close attention to the entire recent conversation so short follow-ups (like "সার্চ করে দেখো", "এখানে প্রুফ রিডার নাই?", "করো") use the exact previous context naturally.
 - If the conversation just started with a short greeting or call like "ওই", "hey", or "hi", respond naturally and casually without talking about memory or chat history.
 - Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
+- Keep responses focused on what the user actually asked; do not pad answers with unrelated tangents (for example, when asked if a specific post/role exists in an office, answer directly from search/context without lecturing about unrelated freelance/book rates unless asked).
 - Keep casual chat, feelings, and playful banter concise and natural without repeating robotic disclaimers.
-- In urgent health or safety situations (such as severe chest pain radiating to the arm, neck, or jaw), be calm, clear, and structured: highlight immediate emergency care (such as calling emergency services / 999 in Bangladesh or going to the nearest emergency department) right away rather than giving vague guessing.
+- In urgent health or safety situations (such as severe chest pain radiating to the arm, neck, or jaw), be calm, clear, and structured: highlight immediate emergency care (such as calling emergency services / 999 in Bangladesh or going to the nearest emergency department) right away rather than vague guessing.
 - Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
 
 Fact, Uncertainty & Search Rules:
-- Whenever a question involves real-world facts, current/recent events, numbers/helplines, places/hospitals, laws/rules, websites, or anything you are not 100% certain about, rely on the provided live web search results rather than guessing from memory.
-- Never invent or guess phone numbers, helpline purposes, addresses, dates, prices, or facts not supported by the search results or verified knowledge. If search results do not clearly confirm something, state clearly that verified details are not confirmed and advise checking official sources.
+- Whenever a question involves real-world facts, current/recent events, numbers/helplines, organizations/departments, specific roles/posts, places/hospitals, laws/rules, websites, or anything you are not 100% certain about, rely on the provided live web search results rather than guessing from memory.
+- Never invent or guess phone numbers, helpline purposes, addresses, dates, prices, official posts, or facts not supported by the search results or verified knowledge. If search results do not clearly confirm something, say so plainly and briefly without making up details.
 
 Identity & Formatting Rules:
 - Name: GRAI; under GRL. Mention GRL/GRAI naturally only when asked who you are or who made you.
@@ -158,12 +159,12 @@ function shouldSearchWeb(query = "", history = []) {
 
   const hasNumber = /\d{2,}/.test(q);
   const hasQuestionOrLookup =
-    /[?？]|(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|hospital|clinic|near|nearest|website|address|location|who|what|when|where|which|how|কবে|কখন|কোথায়|কী|কি|কিসের|খবর|তথ্য|মেলা|দপ্তর|হসপিটাল|হাসপাতাল|নিকটস্থ|কাছাকাছি|সার্চ|দাম|ওয়েবসাইট|ঠিকানা|লোকেশন|কেন|কীভাবে)/i.test(
+    /[?？]|(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|post|role|officer|proof|hospital|clinic|near|nearest|website|address|location|who|what|when|where|which|how|কবে|কখন|কোথায়|কী|কি|কিসের|খবর|তথ্য|মেলা|দপ্তর|অফিস|পদ|কর্মকর্তা|প্রুফ|রিডার|হসপিটাল|হাসপাতাল|নিকটস্থ|কাছাকাছি|সার্চ|দাম|ওয়েবসাইট|ঠিকানা|লোকেশন|কেন|কীভাবে|নাই|আছে)/i.test(
       q
     );
 
   const hasHistory = Array.isArray(history) && history.length > 0;
-  return hasNumber || hasQuestionOrLookup || hasHistory || q.length >= 12;
+  return hasNumber || hasQuestionOrLookup || hasHistory || q.length >= 10;
 }
 
 async function generateSearchQueries(userMessage, safeHistory, credentials) {
@@ -181,7 +182,7 @@ async function generateSearchQueries(userMessage, safeHistory, credentials) {
           {
             role: "system",
             content:
-              "You generate web search queries to find verified, accurate information. Combine the current user message with relevant facts from Recent Context (such as numbers like 16263, places like Dhanmondi 5, or topics) when needed. Output ONLY a JSON array of 2 concise search queries: Query 1 MUST be clean English (with Bangladesh/Dhaka and 2026 when relevant), and Query 2 in Bengali if the user wrote in Bengali (or another clean English query). Output ONLY valid JSON array of 2 strings.",
+              "You generate web search queries to find verified, accurate information. Combine the current user message with relevant facts from Recent Context (such as numbers like 16263, organizations like মৎস্য ও প্রাণিসম্পদ তথ্য দপ্তর / FLID, posts like প্রুফ রিডার, places like Dhanmondi 5, or topics) when needed. Output ONLY a JSON array of 2 concise search queries: Query 1 MUST be clean English (with Bangladesh/Dhaka and 2026 when relevant), and Query 2 in Bengali if the user wrote in Bengali (or another clean English query). Output ONLY valid JSON array of 2 strings.",
           },
           {
             role: "user",
@@ -461,4 +462,3 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ reply: fallbackMsg });
   }
 };
-
