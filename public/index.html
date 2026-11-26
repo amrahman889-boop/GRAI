@@ -231,6 +231,56 @@
       object-fit: cover;
     }
 
+    /* Animated Typing Dots & Searching Status */
+    .grai-status-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 22px;
+    }
+    .grai-typing-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 2px;
+    }
+    .grai-typing-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4b5563;
+      animation: graiDotBounce 1.1s infinite ease-in-out;
+    }
+    .grai-typing-dot:nth-child(2) { animation-delay: 0.18s; }
+    .grai-typing-dot:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes graiDotBounce {
+      0%, 80%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+      40% {
+        transform: translateY(-6px);
+        opacity: 1;
+      }
+    }
+    .grai-search-spinner {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      border: 2px solid #d1d5db;
+      border-top-color: #111827;
+      border-radius: 50%;
+      animation: graiSpin 0.75s linear infinite;
+    }
+    @keyframes graiSpin {
+      to { transform: rotate(360deg); }
+    }
+    .grai-search-text {
+      font-size: 13.5px;
+      font-weight: 500;
+      color: #374151;
+    }
+
     .composer {
       position: relative;
       padding: 10px 12px 12px;
@@ -438,6 +488,7 @@
 
   <script>
     const STORAGE_KEY = "grai_conversations_gemini_v1";
+    const WELCOME_TEXT = "Hello! I'm GRAI. How can I help you today?";
 
     const menuBtn = document.getElementById("menu-btn");
     const newChatBtn = document.getElementById("new-chat-btn");
@@ -857,13 +908,59 @@
       return row;
     }
 
+    function likelyNeedsSearch(text = "") {
+      const q = text.trim();
+      if (q.length < 4) return false;
+      if (/^(hi|hello|hey|salam|assalamu alaikum|kemon acho|thanks|ok|হাই|হ্যালো|সালাম|ধন্যবাদ)\b/i.test(q)) {
+        return false;
+      }
+      return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কে|কারা|কী|কি)/i.test(
+        q
+      );
+    }
+
+    function buildPendingIndicatorElement(isSearchingMode = false) {
+      const row = document.createElement("div");
+      row.className = "msg-row assistant";
+
+      const label = document.createElement("div");
+      label.className = "msg-label";
+      label.textContent = "GRAI";
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+
+      const statusBox = document.createElement("div");
+      statusBox.className = "grai-status-box";
+
+      if (isSearchingMode) {
+        statusBox.innerHTML = `
+          <span class="grai-search-spinner"></span>
+          <span class="grai-search-text">Searching...</span>
+        `;
+      } else {
+        statusBox.innerHTML = `
+          <div class="grai-typing-dots" aria-label="GRAI is typing">
+            <span class="grai-typing-dot"></span>
+            <span class="grai-typing-dot"></span>
+            <span class="grai-typing-dot"></span>
+          </div>
+        `;
+      }
+
+      bubble.appendChild(statusBox);
+      row.appendChild(label);
+      row.appendChild(bubble);
+      return row;
+    }
+
     function renderMessages() {
       const active = getActiveSession();
       chatAreaEl.innerHTML = "";
 
       if (!active.messages || active.messages.length === 0) {
         chatAreaEl.appendChild(
-          buildMessageElement("assistant", "Hello! How can I help you today?")
+          buildMessageElement("assistant", WELCOME_TEXT)
         );
       } else {
         for (const msg of active.messages) {
@@ -913,7 +1010,8 @@
       clearAttachment();
       sendBtnEl.disabled = true;
 
-      const typingEl = buildMessageElement("assistant", "...");
+      const isSearchPrompt = !isImage && likelyNeedsSearch(text);
+      const typingEl = buildPendingIndicatorElement(isSearchPrompt);
       chatAreaEl.appendChild(typingEl);
       chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
 
@@ -929,13 +1027,25 @@
         });
 
         const data = await res.json().catch(() => ({}));
+
+        if (data && data.searched && data.searchQuery) {
+          const statusBox = typingEl.querySelector(".grai-status-box");
+          if (statusBox) {
+            statusBox.innerHTML = `
+              <span class="grai-search-spinner"></span>
+              <span class="grai-search-text">Searching ${data.searchQuery}</span>
+            `;
+            await new Promise((r) => setTimeout(r, 350));
+          }
+        }
+
         typingEl.remove();
 
-        const wantsEnglish = /[a-zA-Z]/.test(text) && !/[\u0980-\u09FF]/.test(text);
+        const isBengali = /[\u0980-\u09FF]/.test(text);
         const replyText =
           res.ok && data?.reply
             ? data.reply
-            : (wantsEnglish ? "Temporary issue" : "সাময়িক সমস্যা");
+            : (isBengali ? "সাময়িক সমস্যা" : "Temporary issue");
 
         active.messages.push({
           role: "assistant",
@@ -946,8 +1056,8 @@
         renderAll();
       } catch {
         typingEl.remove();
-        const wantsEnglish = /[a-zA-Z]/.test(text) && !/[\u0980-\u09FF]/.test(text);
-        const errReply = wantsEnglish ? "Temporary issue" : "সাময়িক সমস্যা";
+        const isBengali = /[\u0980-\u09FF]/.test(text);
+        const errReply = isBengali ? "সাময়িক সমস্যা" : "Temporary issue";
         active.messages.push({
           role: "assistant",
           text: errReply,
