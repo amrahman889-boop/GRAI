@@ -909,12 +909,13 @@
     }
 
     function likelyNeedsSearch(text = "") {
-      const q = text.trim();
-      if (q.length < 4) return false;
-      if (/^(hi|hello|hey|salam|assalamu alaikum|kemon acho|thanks|ok|হাই|হ্যালো|সালাম|ধন্যবাদ)\b/i.test(q)) {
-        return false;
-      }
-      return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কে|কারা|কী|কি)/i.test(
+      const q = text.trim().toLowerCase();
+      if (q.length < 5) return false;
+
+      const casualOrFeeling = /(কিরে|কি অবস্থা|কেমন আছ|ভালো লাগছে না|মন খারাপ|ভালো নেই|হাই|হ্যালো|সালাম|ধন্যবাদ|hi|hello|hey|salam|how are you|feeling down|not feeling well|thanks)/i;
+      if (casualOrFeeling.test(q)) return false;
+
+      return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|কবে|কখন|কোথায়|খবর|তথ্য|মেলা|দপ্তর|সার্চ|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়)/i.test(
         q
       );
     }
