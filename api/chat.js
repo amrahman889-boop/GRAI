@@ -6,10 +6,10 @@ Conversation & Memory Rules:
 - Always pay close attention to the entire recent conversation so short follow-ups (like "সার্চ করে দেখো", "এখানে প্রুফ রিডার নাই?", "করো") use the exact previous context naturally.
 - If the conversation just started with a short greeting or call like "ওই", "hey", or "hi", respond naturally and casually without talking about memory or chat history.
 - Sound human, warm, and natural—never stiff, robotic, preachy, or overly formal.
-- Keep responses focused on what the user actually asked; do not pad answers with unrelated tangents (for example, when asked if a specific post/role exists in an office, answer directly from search/context without lecturing about unrelated freelance/book rates unless asked).
+- Keep responses focused on what the user actually asked; do not pad answers with unrelated tangents.
+- End most replies with a brief, natural follow-up question or helpful offer directly tied to the current topic (for example, asking a relevant question about the topic or saying something like "চাইলে আমি আরও বিস্তারিত খুঁজে দিতে পারি" / "Would you like me to look up more details on this?") so the conversation stays engaging—except in urgent life-threatening emergencies (where immediate action comes first) or simple sign-offs.
 - Keep casual chat, feelings, and playful banter concise and natural without repeating robotic disclaimers.
-- In urgent health or safety situations (such as severe chest pain radiating to the arm, neck, or jaw), be calm, clear, and structured: highlight immediate emergency care (such as calling emergency services / 999 in Bangladesh or going to the nearest emergency department) right away rather than vague guessing.
-- Do NOT force a question at the end of every message; add a short, natural follow-up only when it genuinely fits.
+- In urgent health or safety situations (such as severe chest pain radiating to the arm, neck, or jaw), be calm, clear, and structured: highlight immediate emergency care (such as calling emergency services / 999 in Bangladesh or going to the nearest emergency department) right away rather than giving vague guessing.
 
 Fact, Uncertainty & Search Rules:
 - Whenever a question involves real-world facts, current/recent events, numbers/helplines, organizations/departments, specific roles/posts, places/hospitals, laws/rules, websites, or anything you are not 100% certain about, rely on the provided live web search results rather than guessing from memory.
@@ -182,7 +182,7 @@ async function generateSearchQueries(userMessage, safeHistory, credentials) {
           {
             role: "system",
             content:
-              "You generate web search queries to find verified, accurate information. Combine the current user message with relevant facts from Recent Context (such as numbers like 16263, organizations like মৎস্য ও প্রাণিসম্পদ তথ্য দপ্তর / FLID, posts like প্রুফ রিডার, places like Dhanmondi 5, or topics) when needed. Output ONLY a JSON array of 2 concise search queries: Query 1 MUST be clean English (with Bangladesh/Dhaka and 2026 when relevant), and Query 2 in Bengali if the user wrote in Bengali (or another clean English query). Output ONLY valid JSON array of 2 strings.",
+              "You generate web search queries to find verified, accurate information. Combine the current user message with relevant facts from Recent Context (such as numbers like 16263 or 333, organizations like মৎস্য ও প্রাণিসম্পদ তথ্য দপ্তর / FLID, posts like প্রুফ রিডার, places like Dhanmondi 5, or topics) when needed. Output ONLY a JSON array of 2 concise search queries: Query 1 MUST be clean English (with Bangladesh/Dhaka and 2026 when relevant), and Query 2 in Bengali if the user wrote in Bengali (or another clean English query). Output ONLY valid JSON array of 2 strings.",
           },
           {
             role: "user",
@@ -444,7 +444,7 @@ module.exports = async function handler(req, res) {
       {
         messages,
         max_tokens: 1200,
-        temperature: 0.3,
+        temperature: 0.35,
       },
       credentials
     );
