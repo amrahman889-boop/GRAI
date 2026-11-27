@@ -14,6 +14,94 @@
       height: 100dvh;
       overflow: hidden;
     }
+
+    /* Auth Gate Overlay */
+    .auth-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: #f4f6f9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-screen.hidden { display: none; }
+    .auth-card {
+      width: 100%;
+      max-width: 390px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 28px 22px;
+      box-shadow: 0 14px 36px rgba(17, 24, 39, 0.08);
+      text-align: center;
+    }
+    .auth-badge {
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #374151;
+      background: #f3f4f6;
+      padding: 5px 10px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .auth-title {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 700;
+      color: #111827;
+    }
+    .auth-sub {
+      margin: 0 0 22px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #4b5563;
+    }
+    .auth-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .google-btn {
+      width: 100%;
+      height: 46px;
+      border: 1px solid #d1d5db;
+      background: #111827;
+      color: #ffffff;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .google-btn:hover { background: #1f2937; }
+    .guest-btn {
+      width: 100%;
+      height: 44px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      border-radius: 12px;
+      font-size: 14.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .guest-btn:hover { background: #f9fafb; }
+    .auth-status {
+      margin-top: 14px;
+      min-height: 20px;
+      font-size: 13px;
+      color: #dc2626;
+      line-height: 1.4;
+    }
+
     .app {
       position: relative;
       width: 100%;
@@ -28,22 +116,25 @@
 
     .topbar {
       height: 56px;
-      padding: 0 14px;
+      padding: 0 12px;
       border-bottom: 1px solid #e5e7eb;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #ffffff;
       z-index: 5;
+      gap: 8px;
     }
     .left-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      min-width: 0;
     }
     .menu-btn {
       width: 38px;
       height: 38px;
+      flex-shrink: 0;
       border: none;
       background: transparent;
       border-radius: 10px;
@@ -69,6 +160,27 @@
       margin: 0;
       color: #111827;
     }
+    .right-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .user-chip {
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      padding: 6px 10px;
+      border-radius: 999px;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+    .user-chip:hover { background: #e5e7eb; }
     .new-chat-top-btn {
       border: 1px solid #d1d5db;
       background: #ffffff;
@@ -93,7 +205,7 @@
       position: fixed;
       top: 0;
       left: 0;
-      width: 290px;
+      width: 295px;
       max-width: 82vw;
       height: 100dvh;
       background: #ffffff;
@@ -145,6 +257,34 @@
     }
     .history-item:hover { background: #f3f4f6; }
     .history-item.active { background: #e5e7eb; font-weight: 600; }
+
+    .drawer-footer {
+      border-top: 1px solid #f3f4f6;
+      padding-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .account-meta {
+      font-size: 12.5px;
+      color: #4b5563;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .auth-switch-btn {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid #d1d5db;
+      background: #ffffff;
+      color: #111827;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+    }
+    .auth-switch-btn:hover { background: #f9fafb; }
 
     .action-sheet-backdrop {
       position: fixed;
@@ -420,6 +560,26 @@
   </style>
 </head>
 <body>
+  <!-- Login / Guest Gate -->
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-badge">GRAI Cloud</div>
+      <h2 class="auth-title">Welcome to GRAI</h2>
+      <p class="auth-sub">
+        Sign in with Google to save your chats permanently in Firestore, or continue as Guest.
+      </p>
+      <div class="auth-actions">
+        <button id="google-login-btn" class="google-btn" type="button">
+          <span>Continue with Google</span>
+        </button>
+        <button id="guest-login-btn" class="guest-btn" type="button">
+          Continue as Guest
+        </button>
+      </div>
+      <div id="auth-status" class="auth-status"></div>
+    </div>
+  </div>
+
   <div class="app">
     <header class="topbar">
       <div class="left-group">
@@ -429,7 +589,10 @@
         </button>
         <h1 class="brand-title">GRAI</h1>
       </div>
-      <button id="new-chat-btn" class="new-chat-top-btn" type="button">New Chat</button>
+      <div class="right-group">
+        <button id="user-chip-btn" class="user-chip" type="button" title="Account options">Guest</button>
+        <button id="new-chat-btn" class="new-chat-top-btn" type="button">New Chat</button>
+      </div>
     </header>
 
     <main id="chat-area" class="chat-area"></main>
@@ -477,6 +640,10 @@
       <button id="close-drawer-btn" class="close-drawer-btn" type="button" aria-label="Close">×</button>
     </div>
     <div id="history-list" class="history-list"></div>
+    <div class="drawer-footer">
+      <div id="account-meta" class="account-meta">Not signed in</div>
+      <button id="auth-action-btn" class="auth-switch-btn" type="button">Sign in / Switch</button>
+    </div>
   </aside>
 
   <div id="action-sheet-backdrop" class="action-sheet-backdrop">
@@ -486,9 +653,55 @@
     </div>
   </div>
 
-  <script>
-    const STORAGE_KEY = "grai_conversations_gemini_v1";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signInWithRedirect,
+      getRedirectResult,
+      onAuthStateChanged,
+      signOut,
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      setDoc,
+      deleteDoc,
+      getDocs,
+      query,
+      orderBy,
+    } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNK70koTNEW0cp45Dit-X1PuXH2vIJjnA",
+      authDomain: "grai-ai.firebaseapp.com",
+      projectId: "grai-ai",
+      storageBucket: "grai-ai.firebasestorage.app",
+      messagingSenderId: "1012005049757",
+      appId: "1:1012005049757:web:d3f6dde1f7400a7f198b74",
+      measurementId: "G-91PR9B04DD",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    const LEGACY_STORAGE_KEY = "grai_conversations_gemini_v1";
+    const GUEST_STORAGE_KEY = "grai_guest_conversations_v1";
+    const GUEST_MODE_KEY = "grai_guest_mode_v1";
     const WELCOME_TEXT = "Hello! I'm GRAI. How can I help you today?";
+
+    const authScreenEl = document.getElementById("auth-screen");
+    const googleLoginBtn = document.getElementById("google-login-btn");
+    const guestLoginBtn = document.getElementById("guest-login-btn");
+    const authStatusEl = document.getElementById("auth-status");
+    const userChipBtn = document.getElementById("user-chip-btn");
+    const accountMetaEl = document.getElementById("account-meta");
+    const authActionBtn = document.getElementById("auth-action-btn");
 
     const menuBtn = document.getElementById("menu-btn");
     const newChatBtn = document.getElementById("new-chat-btn");
@@ -521,7 +734,253 @@
 
     let selectedSessionIdForAction = null;
     let currentAttachment = null;
-    let state = loadStateWithFreshStart();
+    let currentFirebaseUser = null;
+    let isGuestMode = localStorage.getItem(GUEST_MODE_KEY) === "true";
+
+    let state = {
+      sessions: [createNewSession()],
+      activeId: null,
+    };
+    state.activeId = state.sessions[0].id;
+
+    function createNewSession() {
+      return {
+        id: "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
+        title: "New Chat",
+        updatedAt: Date.now(),
+        messages: [],
+      };
+    }
+
+    function sanitizeMessagesForCloud(messages = []) {
+      return messages.map((m) => {
+        if (typeof m === "string") {
+          return { role: "assistant", text: m, content: m };
+        }
+        return {
+          role: m.role || "user",
+          text: m.text || "",
+          fileName: m.fileName || null,
+          content: m.content || m.text || m.fileName || "",
+        };
+      });
+    }
+
+    function loadLocalFallbackSessions(key = LEGACY_STORAGE_KEY) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.sessions)) {
+            return parsed.sessions
+              .filter((s) => Array.isArray(s.messages) && s.messages.length > 0)
+              .map((s) => ({
+                id: s.id || "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+                title: s.title || "New Chat",
+                updatedAt: s.updatedAt || Date.now(),
+                messages: sanitizeMessagesForCloud(s.messages),
+              }));
+          }
+        }
+      } catch {}
+      return [];
+    }
+
+    function saveGuestState(nextState = state) {
+      try {
+        const storable = {
+          sessions: nextState.sessions.map((s) => ({
+            ...s,
+            messages: sanitizeMessagesForCloud(s.messages),
+          })),
+          activeId: nextState.activeId,
+        };
+        localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(storable));
+      } catch {}
+    }
+
+    async function saveSessionToFirestore(session) {
+      if (!currentFirebaseUser || !session) return;
+      if (!Array.isArray(session.messages) || session.messages.length === 0) return;
+
+      const userRef = doc(db, "users", currentFirebaseUser.uid);
+      const chatRef = doc(db, "users", currentFirebaseUser.uid, "chats", session.id);
+
+      await setDoc(
+        userRef,
+        {
+          uid: currentFirebaseUser.uid,
+          name: currentFirebaseUser.displayName || "GRAI User",
+          email: currentFirebaseUser.email || "",
+          lastActiveAt: Date.now(),
+        },
+        { merge: true }
+      );
+
+      await setDoc(
+        chatRef,
+        {
+          id: session.id,
+          title: session.title || "New Chat",
+          updatedAt: session.updatedAt || Date.now(),
+          messages: sanitizeMessagesForCloud(session.messages),
+        },
+        { merge: true }
+      );
+    }
+
+    async function deleteSessionFromFirestore(sessionId) {
+      if (!currentFirebaseUser || !sessionId) return;
+      try {
+        await deleteDoc(doc(db, "users", currentFirebaseUser.uid, "chats", sessionId));
+      } catch {}
+    }
+
+    async function loadUserSessionsFromFirestore(uid) {
+      const chatsCol = collection(db, "users", uid, "chats");
+      const q = query(chatsCol, orderBy("updatedAt", "desc"));
+      const snap = await getDocs(q);
+      const loaded = [];
+      snap.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (d && Array.isArray(d.messages) && d.messages.length > 0) {
+          loaded.push({
+            id: d.id || docSnap.id,
+            title: d.title || "New Chat",
+            updatedAt: d.updatedAt || 0,
+            messages: d.messages,
+          });
+        }
+      });
+      return loaded;
+    }
+
+    function updateAccountUI() {
+      if (currentFirebaseUser) {
+        authScreenEl.classList.add("hidden");
+        const label = currentFirebaseUser.displayName || currentFirebaseUser.email || "Google User";
+        userChipBtn.textContent = label;
+        accountMetaEl.textContent = `Signed in: ${label}`;
+        authActionBtn.textContent = "Sign out / Switch";
+      } else if (isGuestMode) {
+        authScreenEl.classList.add("hidden");
+        userChipBtn.textContent = "Guest";
+        accountMetaEl.textContent = "Mode: Guest (Local)";
+        authActionBtn.textContent = "Sign in with Google";
+      } else {
+        authScreenEl.classList.remove("hidden");
+        userChipBtn.textContent = "Guest";
+        accountMetaEl.textContent = "Not signed in";
+        authActionBtn.textContent = "Sign in with Google";
+      }
+    }
+
+    async function initSessionsForCurrentUser() {
+      updateAccountUI();
+
+      if (currentFirebaseUser) {
+        authStatusEl.textContent = "";
+        let cloudSessions = await loadUserSessionsFromFirestore(currentFirebaseUser.uid);
+
+        // Migrate legacy/guest sessions if cloud is empty
+        if (cloudSessions.length === 0) {
+          const fallback = [
+            ...loadLocalFallbackSessions(GUEST_STORAGE_KEY),
+            ...loadLocalFallbackSessions(LEGACY_STORAGE_KEY),
+          ];
+          if (fallback.length > 0) {
+            for (const s of fallback) {
+              await saveSessionToFirestore(s);
+            }
+            cloudSessions = fallback;
+          }
+        }
+
+        const fresh = createNewSession();
+        state = {
+          sessions: [fresh, ...cloudSessions],
+          activeId: fresh.id,
+        };
+        renderAll();
+        return;
+      }
+
+      if (isGuestMode) {
+        const savedGuest = loadLocalFallbackSessions(GUEST_STORAGE_KEY);
+        const fresh = createNewSession();
+        state = {
+          sessions: [fresh, ...savedGuest],
+          activeId: fresh.id,
+        };
+        saveGuestState(state);
+        renderAll();
+      }
+    }
+
+    async function handleGoogleSignIn() {
+      authStatusEl.textContent = "Signing in with Google...";
+      try {
+        localStorage.removeItem(GUEST_MODE_KEY);
+        isGuestMode = false;
+        await signInWithPopup(auth, googleProvider);
+        authStatusEl.textContent = "";
+      } catch (err) {
+        if (
+          err?.code === "auth/popup-blocked" ||
+          err?.code === "auth/cancelled-popup-request" ||
+          err?.code === "auth/operation-not-supported-in-this-environment"
+        ) {
+          try {
+            await signInWithRedirect(auth, googleProvider);
+            return;
+          } catch (redirErr) {
+            authStatusEl.textContent = redirErr?.message || "Google sign-in failed.";
+          }
+        } else if (err?.code === "auth/popup-closed-by-user") {
+          authStatusEl.textContent = "Sign-in was cancelled.";
+        } else {
+          authStatusEl.textContent = err?.message || "Could not sign in with Google.";
+        }
+      }
+    }
+
+    googleLoginBtn.addEventListener("click", handleGoogleSignIn);
+
+    guestLoginBtn.addEventListener("click", async () => {
+      authStatusEl.textContent = "";
+      localStorage.setItem(GUEST_MODE_KEY, "true");
+      isGuestMode = true;
+      await initSessionsForCurrentUser();
+    });
+
+    userChipBtn.addEventListener("click", () => {
+      openDrawer();
+    });
+
+    authActionBtn.addEventListener("click", async () => {
+      closeDrawer();
+      if (currentFirebaseUser) {
+        await signOut(auth);
+        localStorage.removeItem(GUEST_MODE_KEY);
+        isGuestMode = false;
+        updateAccountUI();
+      } else {
+        localStorage.removeItem(GUEST_MODE_KEY);
+        isGuestMode = false;
+        updateAccountUI();
+      }
+    });
+
+    getRedirectResult(auth).catch((err) => {
+      if (err?.message) {
+        authStatusEl.textContent = err.message;
+      }
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      currentFirebaseUser = user || null;
+      await initSessionsForCurrentUser();
+    });
 
     function autoResizeTextarea() {
       promptInputEl.style.height = "auto";
@@ -536,44 +995,6 @@
         chatFormEl.requestSubmit();
       }
     });
-
-    function createNewSession() {
-      return {
-        id: "conv_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7),
-        title: "New Chat",
-        messages: [],
-      };
-    }
-
-    function loadSavedSessions() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.sessions)) {
-            return parsed.sessions.filter((s) => Array.isArray(s.messages) && s.messages.length > 0);
-          }
-        }
-      } catch {}
-      return [];
-    }
-
-    function loadStateWithFreshStart() {
-      const saved = loadSavedSessions();
-      const fresh = createNewSession();
-      const nextState = {
-        sessions: [fresh, ...saved],
-        activeId: fresh.id,
-      };
-      saveState(nextState);
-      return nextState;
-    }
-
-    function saveState(nextState = state) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      } catch {}
-    }
 
     function getActiveSession() {
       return state.sessions.find((s) => s.id === state.activeId) || state.sessions[0];
@@ -768,7 +1189,7 @@
       }
     });
 
-    renameOptionBtn.addEventListener("click", () => {
+    renameOptionBtn.addEventListener("click", async () => {
       const targetId = selectedSessionIdForAction;
       closeActionMenu();
       if (!targetId) return;
@@ -777,12 +1198,17 @@
       const nextTitle = prompt("Rename chat:", target.title || "New Chat");
       if (nextTitle && nextTitle.trim()) {
         target.title = nextTitle.trim().slice(0, 60);
-        saveState();
+        target.updatedAt = Date.now();
+        if (currentFirebaseUser) {
+          await saveSessionToFirestore(target);
+        } else {
+          saveGuestState(state);
+        }
         renderHistory();
       }
     });
 
-    deleteOptionBtn.addEventListener("click", () => {
+    deleteOptionBtn.addEventListener("click", async () => {
       const targetId = selectedSessionIdForAction;
       closeActionMenu();
       if (!targetId) return;
@@ -798,7 +1224,12 @@
           state.activeId = remaining[0].id;
         }
       }
-      saveState();
+
+      if (currentFirebaseUser) {
+        await deleteSessionFromFirestore(targetId);
+      } else {
+        saveGuestState(state);
+      }
       renderAll();
     });
 
@@ -812,7 +1243,9 @@
       const fresh = createNewSession();
       state.sessions.unshift(fresh);
       state.activeId = fresh.id;
-      saveState();
+      if (!currentFirebaseUser) {
+        saveGuestState(state);
+      }
       closeDrawer();
       renderAll();
       promptInputEl.focus();
@@ -866,7 +1299,9 @@
             return;
           }
           state.activeId = session.id;
-          saveState();
+          if (!currentFirebaseUser) {
+            saveGuestState(state);
+          }
           closeDrawer();
           renderAll();
         });
@@ -912,11 +1347,9 @@
       const q = text.trim().toLowerCase();
       if (q.length < 4) return false;
 
-      // সাধারণ আড্ডা, অনুভূতি বা কুশল বিনিময়ে কখনোই সার্চ নয়
       const casualOrFeeling = /(কিরে|কি অবস্থা|কেমন আছ|ভালো লাগছে না|মন খারাপ|ভালো নেই|হাই|হ্যালো|সালাম|ধন্যবাদ|আমি বাংলাদেশে থাকি|বাংলাদেশে থাকি|hi|hello|hey|salam|how are you|feeling down|not feeling well|i live in|thanks)/i;
       if (casualOrFeeling.test(q)) return false;
 
-      // শুধু স্পষ্ট তথ্য/খবর/তারিখ/নিয়ম/দাম/অফিস/থানা বা সার্চের অনুরোধে সার্চ
       return /(search|news|latest|current|today|update|price|score|schedule|event|fair|mela|office|department|oc|police|thana|law|act|cyber|website|address|location|who is|what is|when is|where is|সার্চ|খবর|তথ্য|মেলা|দপ্তর|দাম|থানা|ওসি|আইন|অধীনে|অন্তরে|ওয়েবসাইট|ঠিকানা|লোকেশন|মেইন অফিস|প্রধান কার্যালয়|কবে|কখন|কোথায়)/i.test(
         q
       );
@@ -961,10 +1394,8 @@
       const active = getActiveSession();
       chatAreaEl.innerHTML = "";
 
-      if (!active.messages || active.messages.length === 0) {
-        chatAreaEl.appendChild(
-          buildMessageElement("assistant", WELCOME_TEXT)
-        );
+      if (!active || !active.messages || active.messages.length === 0) {
+        chatAreaEl.appendChild(buildMessageElement("assistant", WELCOME_TEXT));
       } else {
         for (const msg of active.messages) {
           chatAreaEl.appendChild(buildMessageElement(msg.role, msg));
@@ -1003,9 +1434,14 @@
       if (active.messages.length === 0 && active.title === "New Chat") {
         active.title = (text || attachmentSnapshot?.name || "New Chat").slice(0, 36);
       }
-
+      active.updatedAt = Date.now();
       active.messages.push(userMessageObj);
-      saveState();
+
+      if (currentFirebaseUser) {
+        await saveSessionToFirestore(active);
+      } else {
+        saveGuestState(state);
+      }
       renderAll();
 
       promptInputEl.value = "";
@@ -1050,23 +1486,35 @@
             ? data.reply
             : (isBengali ? "সাময়িক সমস্যা" : "Temporary issue");
 
+        active.updatedAt = Date.now();
         active.messages.push({
           role: "assistant",
           text: replyText,
           content: replyText,
         });
-        saveState();
+
+        if (currentFirebaseUser) {
+          await saveSessionToFirestore(active);
+        } else {
+          saveGuestState(state);
+        }
         renderAll();
       } catch {
         typingEl.remove();
         const isBengali = /[\u0980-\u09FF]/.test(text);
         const errReply = isBengali ? "সাময়িক সমস্যা" : "Temporary issue";
+        active.updatedAt = Date.now();
         active.messages.push({
           role: "assistant",
           text: errReply,
           content: errReply,
         });
-        saveState();
+
+        if (currentFirebaseUser) {
+          await saveSessionToFirestore(active);
+        } else {
+          saveGuestState(state);
+        }
         renderAll();
       } finally {
         sendBtnEl.disabled = false;
